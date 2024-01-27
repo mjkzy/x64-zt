@@ -103,11 +103,32 @@ namespace zonetool::h1
 		}
 	}
 
-	void zone_interface::add_asset_of_type(std::int32_t type, const std::string& name)
+	void zone_interface::add_asset_of_type(std::int32_t type, const std::string& name_)
 	{
-		if (name.empty())
+		if (name_.empty())
 		{
 			//return;
+		}
+
+		std::string name = name_;
+
+		if (name.starts_with("/maps"))
+		{
+			int length = std::string("/maps").size();
+			name = name.substr(length, name.size());
+		}
+
+		// fixup IW4x zonebuilder-dumped assets having odd names
+		if (name.starts_with("maps/mp/maps/mp"))
+		{
+			int length = std::string("maps/mp/").size();
+			name = name.substr(length, name.size());
+		}
+
+		if (name.ends_with(".d3dbsp.d3dbsp"))
+		{
+			int length = std::string(".d3dbsp").size();
+			name = name.substr(0, name.size() - length);
 		}
 
 		// don't add asset if it already exists
