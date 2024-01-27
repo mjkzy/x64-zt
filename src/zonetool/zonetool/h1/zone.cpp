@@ -110,15 +110,8 @@ namespace zonetool::h1
 			//return;
 		}
 
-		std::string name = name_;
-
-		if (name.starts_with("/maps"))
-		{
-			int length = std::string("/maps").size();
-			name = name.substr(length, name.size());
-		}
-
 		// fixup IW4x zonebuilder-dumped assets having odd names
+		std::string name = name_;
 		if (name.starts_with("maps/mp/maps/mp"))
 		{
 			int length = std::string("maps/mp/").size();
