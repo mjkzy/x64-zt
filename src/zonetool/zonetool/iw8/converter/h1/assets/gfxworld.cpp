@@ -1,10 +1,10 @@
 #include <std_include.hpp>
-#include "zonetool/s1/converter/h1/include.hpp"
+#include "zonetool/iw8/converter/h1/include.hpp"
 #include "gfxworld.hpp"
 
 #include "zonetool/h1/assets/gfxworld.hpp"
 
-namespace zonetool::s1
+namespace zonetool::iw8
 {
 	namespace converter::h1
 	{
@@ -16,16 +16,21 @@ namespace zonetool::s1
 
 				REINTERPRET_CAST_SAFE(name);
 				REINTERPRET_CAST_SAFE(baseName);
-				new_asset->bspVersion = 111;
-				COPY_VALUE(planeCount);
-				COPY_VALUE(nodeCount);
-				COPY_VALUE(surfaceCount);
-				COPY_VALUE(skyCount);
-				REINTERPRET_CAST_SAFE(skies);
-				COPY_VALUE(portalGroupCount);
+				COPY_VALUE(bspVersion)
+				new_asset->planeCount = asset->dpvsPlanes.planeCount;
+				new_asset->nodeCount = asset->dpvsPlanes.nodeCount;
+				new_asset->surfaceCount = asset->smodels.surfaceCount; // i think?
+
+				new_asset->skyCount = 1;
+				//REINTERPRET_CAST_SAFE(skies); // can't find sky in IW8
+
+				new_asset->portalGroupCount = 0; // can't find, defaulting to 0
+				new_asset->portalGroup = nullptr;
+
 				COPY_VALUE(lastSunPrimaryLightIndex);
 				COPY_VALUE(primaryLightCount);
-				COPY_VALUE(primaryLightEnvCount);
+				new_asset->primaryLightEnvCount = 1; // TODO
+
 				new_asset->sortKeyLitDecal = 7;
 				new_asset->sortKeyEffectDecal = 43;
 				new_asset->sortKeyTopDecal = 17;
@@ -39,12 +44,11 @@ namespace zonetool::s1
 				REINTERPRET_CAST_SAFE(dpvsPlanes.nodes);
 				REINTERPRET_CAST_SAFE(dpvsPlanes.sceneEntCellBits);
 
-				REINTERPRET_CAST_SAFE(skies);
+				/*
+				new_asset->aabbTreeCounts->aabbTreeCount = asset->draw.transientZones[0]->drawCells.aabbTreeCounts->aabbTreeCount; // idk :/
 				REINTERPRET_CAST_SAFE(aabbTreeCounts);
 				REINTERPRET_CAST_SAFE(aabbTrees);
 				REINTERPRET_CAST_SAFE(cells);
-
-				REINTERPRET_CAST_SAFE(portalGroup);
 
 				COPY_VALUE(unk_vec4_count_0);
 				REINTERPRET_CAST_SAFE(unk_vec4_0);
@@ -181,6 +185,7 @@ namespace zonetool::s1
 				COPY_VALUE(unk3);
 
 				COPY_VALUE_CAST(buildInfo);
+				*/
 
 				return new_asset;
 			}
