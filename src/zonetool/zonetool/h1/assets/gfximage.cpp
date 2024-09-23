@@ -659,7 +659,10 @@ namespace zonetool::h1
 
 	void gfx_image::dump(GfxImage* asset)
 	{
-		dump_image_dds(asset);
+		if (utils::flags::has_flag("dds"))
+		{
+			dump_image_dds(asset);
+		}
 
 		if (asset->streamed)
 		{
