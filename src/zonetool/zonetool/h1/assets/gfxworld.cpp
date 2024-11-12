@@ -3,6 +3,196 @@
 
 namespace zonetool::h1
 {
+	namespace
+	{
+		template <typename T>
+		T* get_asset(XAssetType type, const char* name, zone_base* zone)
+		{
+			T* asset = nullptr;
+			auto* asset_interface = zone->find_asset(type, name);
+			if (!asset_interface)
+			{
+				asset = reinterpret_cast<T*>(db_find_x_asset_header(type, name, 1).data);
+			}
+			else
+			{
+				asset = reinterpret_cast<T*>(asset_interface->pointer());
+			}
+			return asset;
+		}
+
+		MaterialTechnique* Material_GetTechnique(const Material* material, int techType, zone_base* zone)
+		{
+			return get_asset<MaterialTechniqueSet>(ASSET_TYPE_TECHNIQUE_SET, material->techniqueSet->name, zone)->techniques[techType];
+		}
+
+		bool Material_IsEmissive(Material* material, zone_base* zone)
+		{
+			return material->techniqueSet &&
+				Material_GetTechnique(material, TECHNIQUE_EMISSIVE, zone);
+		}
+
+		bool Material_IsShadowCaster(Material* material, zone_base* zone)
+		{
+			return material->techniqueSet &&
+				Material_GetTechnique(material, TECHNIQUE_BUILD_SHADOWMAP_DEPTH, zone) &&
+				material->info.sortKey == 38;
+		}
+
+		bool Material_IsTransparent(Material* material, zone_base* zone)
+		{
+			return material->techniqueSet &&
+				Material_GetTechnique(material, TECHNIQUE_LIT, zone) &&
+				material->info.sortKey >= 18 && material->info.sortKey <= 33;
+		}
+
+		bool Material_IsDecal(Material* material, zone_base* zone)
+		{
+			return material->techniqueSet &&
+				Material_GetTechnique(material, TECHNIQUE_LIT, zone) &&
+				material->info.sortKey >= 7 && material->info.sortKey <= 17;
+		}
+
+		bool Material_IsOpaque(Material* material, zone_base* zone)
+		{
+			return material->techniqueSet &&
+				(Material_GetTechnique(material, TECHNIQUE_LIT, zone) ||
+					Material_GetTechnique(material, TECHNIQUE_BUILD_SHADOWMAP_DEPTH, zone)) &&
+				material->info.sortKey < 7;
+		}
+
+		void sort_dpvs_surfaces(GfxWorld* asset, zone_base* zone)
+		{
+			try
+			{
+				auto mem = utils::memory::get_allocator();
+				const unsigned int surfaceCount = asset->models->surfaceCount;
+
+				// Categorize surfaces into different types
+				std::vector<unsigned int> opaque, decal, trans, shadow_caster, emissive;
+
+				for (unsigned int surf_idx = 0; surf_idx < surfaceCount; ++surf_idx)
+				{
+					auto& surf = asset->dpvs.surfaces[surf_idx];
+					auto* surf_material = get_asset<Material>(ASSET_TYPE_MATERIAL, surf.material->name, zone);
+					if (Material_IsOpaque(surf_material, zone))
+						opaque.push_back(surf_idx);
+					else if (Material_IsDecal(surf_material, zone))
+						decal.push_back(surf_idx);
+					else if (Material_IsTransparent(surf_material, zone))
+						trans.push_back(surf_idx);
+					else if (Material_IsShadowCaster(surf_material, zone))
+						shadow_caster.push_back(surf_idx);
+					else if (Material_IsEmissive(surf_material, zone))
+						emissive.push_back(surf_idx);
+					else
+						opaque.push_back(surf_idx); // this is most likely "missing" material
+				}
+
+				// Allocate arrays for sorted surfaces and their bounds
+				auto surfaces_sorted = mem->allocate_array<GfxSurface>(surfaceCount);
+				auto surface_bounds_sorted = mem->allocate_array<GfxSurfaceBounds>(surfaceCount);
+
+				std::unordered_map<unsigned int, unsigned int> old_to_new_surface_index;
+				unsigned int index = 0;
+
+				// Lambda to append surfaces and update the index mapping
+				const auto append_surfaces = [&](const std::vector<unsigned int>& surfaces)
+				{
+					for (const auto surf_idx : surfaces)
+					{
+						old_to_new_surface_index[surf_idx] = index;
+						surfaces_sorted[index] = asset->dpvs.surfaces[surf_idx];
+						surface_bounds_sorted[index] = asset->dpvs.surfacesBounds[surf_idx];
+						++index;
+					}
+				};
+
+				append_surfaces(opaque);
+				append_surfaces(decal);
+				append_surfaces(trans);
+				append_surfaces(shadow_caster);
+				append_surfaces(emissive);
+
+				// Exception check if index doesn't match the surface count
+				if (index != surfaceCount)
+				{
+					throw std::runtime_error("Index count mismatch with surface count.");
+				}
+
+				// Replace original surface and bounds arrays with sorted ones
+				std::memcpy(asset->dpvs.surfaces, surfaces_sorted, sizeof(GfxSurface) * surfaceCount);
+				std::memcpy(asset->dpvs.surfacesBounds, surface_bounds_sorted, sizeof(GfxSurfaceBounds) * surfaceCount);
+
+				// Remap sorted surface indices based on new order
+				std::unordered_map<unsigned int*, bool> replaced_addresses;
+				const auto replace_index_at_address = [&](unsigned int* address, unsigned int val)
+				{
+					if (replaced_addresses.find(address) != replaced_addresses.end())
+						return;
+
+					*address = val;
+					replaced_addresses[address] = true;
+				};
+
+				// Now remap the sortedSurfIndex based on the new surface positions
+				for (unsigned int i = 0; i < asset->dpvs.staticSurfaceCount; ++i)
+				{
+					const auto old_index = asset->dpvs.sortedSurfIndex[i];
+					const auto new_index = old_to_new_surface_index.at(old_index);
+					replace_index_at_address(&asset->dpvs.sortedSurfIndex[i], new_index);
+				}
+
+				// Remap shadow geometry if present
+				if (asset->shadowGeom)
+				{
+					for (unsigned int s = 0; s < asset->primaryLightCount; ++s)
+					{
+						for (unsigned int i = 0; i < asset->shadowGeom[s].surfaceCount; ++i)
+						{
+							const auto old_index = asset->shadowGeom[s].sortedSurfIndex[i];
+							const auto new_index = old_to_new_surface_index.at(old_index);
+							replace_index_at_address(&asset->shadowGeom[s].sortedSurfIndex[i], new_index);
+						}
+					}
+				}
+
+				if (asset->shadowGeomOptimized)
+				{
+					for (unsigned int s = 0; s < asset->primaryLightCount; ++s)
+					{
+						for (unsigned int i = 0; i < asset->shadowGeomOptimized[s].surfaceCount; ++i)
+						{
+							const auto old_index = asset->shadowGeomOptimized[s].sortedSurfIndex[i];
+							const auto new_index = old_to_new_surface_index.at(old_index);
+							replace_index_at_address(&asset->shadowGeomOptimized[s].sortedSurfIndex[i], new_index);
+						}
+					}
+				}
+
+				// Update surface range information
+				asset->dpvs.litOpaqueSurfsBegin = 0;
+				asset->dpvs.litOpaqueSurfsEnd = static_cast<unsigned int>(opaque.size());
+				asset->dpvs.litDecalSurfsBegin = asset->dpvs.litOpaqueSurfsEnd;
+				asset->dpvs.litDecalSurfsEnd = asset->dpvs.litDecalSurfsBegin + static_cast<unsigned int>(decal.size());
+				asset->dpvs.litTransSurfsBegin = asset->dpvs.litDecalSurfsEnd;
+				asset->dpvs.litTransSurfsEnd = asset->dpvs.litTransSurfsBegin + static_cast<unsigned int>(trans.size());
+				asset->dpvs.shadowCasterSurfsBegin = asset->dpvs.litTransSurfsEnd;
+				asset->dpvs.shadowCasterSurfsEnd = asset->dpvs.shadowCasterSurfsBegin + static_cast<unsigned int>(shadow_caster.size());
+				asset->dpvs.emissiveSurfsBegin = asset->dpvs.shadowCasterSurfsEnd;
+				asset->dpvs.emissiveSurfsEnd = asset->dpvs.emissiveSurfsBegin + static_cast<unsigned int>(emissive.size());
+
+				// Free allocated memory
+				mem->free(surfaces_sorted);
+				mem->free(surface_bounds_sorted);
+			}
+			catch (const std::exception& e)
+			{
+				ZONETOOL_ERROR("Could not sort dpvs surfaces!\n%s", e.what());
+			}
+		}
+	}
+
 	GfxWorld* gfx_world::parse(const std::string& name, zone_memory* mem)
 	{
 		const auto path = name + ".gfxmap";
@@ -420,6 +610,8 @@ namespace zonetool::h1
 				}
 			}
 		}
+
+		sort_dpvs_surfaces(this->asset_, zone);
 	}
 
 	std::string gfx_world::name()
