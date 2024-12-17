@@ -157,7 +157,6 @@ namespace zonetool::s1
 		GfxImage* parse(const std::string& name, zone_memory* mem)
 		{
 			DirectX::ScratchImage image;
-			load_image(name, &image);
 
 			if (load_image(name, &image))
 			{
@@ -309,6 +308,7 @@ namespace zonetool::s1
 		ZONETOOL_INFO("Parsing streamed image \"%s\"...", name.data());
 
 		this->custom_streamed_image = true;
+		asset->streamed = true;
 
 		for (auto i = 0; i < 4; i++)
 		{
@@ -394,8 +394,8 @@ namespace zonetool::s1
 			auto* image = mem->allocate<GfxImage>();
 			image->imageFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 			image->mapType = MAPTYPE_2D;
-			image->semantic = 0;
-			image->category = 1;
+			image->semantic = TS_2D;
+			image->category = IMG_CATEGORY_AUTO_GENERATED;
 			image->flags = 0;
 			image->dataLen1 = sizeof(default_pixel_data);
 			image->dataLen2 = sizeof(default_pixel_data);

@@ -72,6 +72,8 @@
 
 namespace zonetool::s1
 {
+	extern std::unordered_set<std::pair<std::uint32_t, std::string>, pair_hash<std::uint32_t, std::string>> ignore_assets;
+
 	XAssetHeader db_find_x_asset_header(XAssetType type, const char* name, int create_default);
 	XAssetHeader db_find_x_asset_header_safe(XAssetType type, const std::string& name);
 

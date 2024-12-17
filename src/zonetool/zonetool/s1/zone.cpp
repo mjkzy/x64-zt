@@ -20,11 +20,22 @@ static_assert(COMPRESS_TYPE == COMPRESS_TYPE_LZ4 || COMPRESS_TYPE == COMPRESS_TY
 
 namespace zonetool::s1
 {
-	asset_interface* zone_interface::find_asset(std::int32_t type, const std::string& name)
+	asset_interface* zone_interface::find_asset(std::int32_t type, const std::string& _name)
 	{
+		std::string name = _name;
+
 		if (name.empty())
 		{
 			return nullptr;
+		}
+
+		// add ignore assets as referenced
+		if (ignore_assets.find(std::make_pair(static_cast<std::uint32_t>(type), name)) != ignore_assets.end())
+		{
+			if (!name.starts_with(","))
+			{
+				name = ","s + name;
+			}
 		}
 
 		for (std::size_t idx = 0; idx < m_assets.size(); idx++)
@@ -218,7 +229,7 @@ namespace zonetool::s1
 		constexpr std::size_t num_streams = 7;
 		XZoneMemory<num_streams> mem;
 
-		std::size_t headersize = sizeof XZoneMemory<num_streams>;
+		std::size_t headersize = sizeof(XZoneMemory<num_streams>);
 		memset(&mem, 0, headersize);
 
 		auto zone = buf->at<XZoneMemory<num_streams>>();
@@ -528,9 +539,12 @@ namespace zonetool::s1
 			zone->streams[i] = buf->stream_offset(static_cast<std::uint8_t>(i));
 		}
 		
+		m_assets.clear();
+		m_assets.shrink_to_fit();
+		
 #ifdef DEBUG
 		// Dump zone to disk (for debugging)
-		buf->save("zonetool\\_debug\\" + this->name_ + ".zone", false);
+		//buf->save("zonetool\\_debug\\" + this->name_ + ".zone", false);
 #endif
 
 		// Compress buffer
@@ -540,24 +554,29 @@ namespace zonetool::s1
 		auto buf_compressed = buf->compress_zlib();
 #endif
 
-		// Generate FF header
-		auto header = this->m_zonemem->allocate<XFileHeader>();
-		strcat(header->header, FF_HEADER);
-		header->version = FF_VERSION;
-		header->compress = 1;
-		header->compressType = COMPRESS_TYPE; // 0 == INVALID, 1 == ZLIB, 3 == PASSTHROUGH, 4 == LZ4
-		header->sizeOfPointer = 8;
-		header->sizeOfLong = 4;
-		header->fileTimeHigh = 0;
-		header->fileTimeLow = 0;
-		header->imageCount = 0;
-		header->baseFileLen = buf_compressed.size() + sizeof(XFileHeader);
-		header->totalFileLen = buf_compressed.size() + sizeof(XFileHeader);
+		const auto streamfiles_count = buf->streamfile_count();
 
-		zone_buffer fastfile;
+		// clear zone buffer
+		//buf->clear();
+
+		// Generate FF header
+		XFileHeader header{ 0 };
+		strcat(header.header, FF_HEADER);
+		header.version = FF_VERSION;
+		header.compress = 1;
+		header.compressType = COMPRESS_TYPE; // 0 == INVALID, 1 == ZLIB, 3 == PASSTHROUGH, 4 == LZ4
+		header.sizeOfPointer = 8;
+		header.sizeOfLong = 4;
+		header.fileTimeHigh = 0;
+		header.fileTimeLow = 0;
+		header.imageCount = static_cast<std::uint32_t>(streamfiles_count);
+		header.baseFileLen = buf_compressed.size() + sizeof(XFileHeader) + (sizeof(XStreamFile) * streamfiles_count);
+		header.totalFileLen = header.baseFileLen;
+
+		// alloc fastfile buffer
+		zone_buffer fastfile(header.baseFileLen);
 
 		// Do streamfile stuff
-		auto streamfiles_count = buf->streamfile_count();
 		if (streamfiles_count > 0)
 		{
 			if (streamfiles_count > 55168)
@@ -566,39 +585,35 @@ namespace zonetool::s1
 				return;
 			}
 
-			header->imageCount = static_cast<std::uint32_t>(streamfiles_count);
-			std::uint64_t base_len = buf_compressed.size() + sizeof(XFileHeader) + (sizeof(XStreamFile) * streamfiles_count);
-
 			// Generate fastfile
-			fastfile = zone_buffer(base_len);
 			fastfile.init_streams(1);
-			fastfile.write_stream(header, sizeof(XFileHeader) - 16);
+			fastfile.write_stream(&header, sizeof(XFileHeader) - 16);
 
 			// Write stream files
-			std::uint64_t total_len = base_len;
+			std::uint64_t total_len = header.totalFileLen;
 			for (std::size_t i = 0; i < streamfiles_count; i++)
 			{
 				auto* stream = reinterpret_cast<XStreamFile*>(buf->get_streamfile(i));
 				fastfile.write_stream(stream, sizeof(XStreamFile));
 
+				// not sure if this is correct, but it doesn't matter.
 				total_len += (stream->offsetEnd - stream->offset);
 			}
+			header.totalFileLen = total_len;
 
-			header->baseFileLen = base_len;
-			header->totalFileLen = total_len;
-
-			fastfile.write_stream(&header->baseFileLen, 8);
-			fastfile.write_stream(&header->totalFileLen, 8);
+			fastfile.write_stream(&header.baseFileLen, 8);
+			fastfile.write_stream(&header.totalFileLen, 8);
 		}
 		else
 		{
 			// Generate fastfile
-			fastfile = zone_buffer(header->baseFileLen);
 			fastfile.init_streams(1);
-			fastfile.write_stream(header, sizeof(XFileHeader));
+			fastfile.write_stream(&header, sizeof(XFileHeader));
 		}
 
 		fastfile.write(buf_compressed.data(), buf_compressed.size());
+		buf_compressed.clear(); // free compressed buffer
+		buf_compressed.shrink_to_fit();
 
 		std::string path = this->name_ + ".ff";
 		fastfile.save(path);
