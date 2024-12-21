@@ -1547,6 +1547,12 @@ namespace zonetool::s1
 				zone->get_asset_pointer(ASSET_TYPE_MATERIAL, data->camoWorldModelMaterialOverride->name));
 		}
 
+		if (data->camoViewModelMaterialOverride)
+		{
+			dest->camoViewModelMaterialOverride = reinterpret_cast<Material*>(
+				zone->get_asset_pointer(ASSET_TYPE_MATERIAL, data->camoViewModelMaterialOverride->name));
+		}
+
 		if (data->szXAnimsRightHanded)
 		{
 			buf->align(7);
