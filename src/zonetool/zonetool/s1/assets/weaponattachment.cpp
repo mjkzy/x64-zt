@@ -1,5 +1,6 @@
 #include <std_include.hpp>
 #include "weaponattachment.hpp"
+#include "weapondef.hpp"
 
 namespace zonetool::s1
 {
@@ -26,6 +27,8 @@ namespace zonetool::s1
 			DEFINE_FIELD(handModel),
 			DEFINE_FIELD(persistentArmXModel),
 			DEFINE_FIELD(lobWorldModelName),
+			DEFINE_FIELD(camoWorldModelMaterialOverride),
+			DEFINE_FIELD(camoViewModelMaterialOverride),
 			DEFINE_FIELD(szXAnimsRightHanded),
 			DEFINE_FIELD(szXAnimsLeftHanded),
 			DEFINE_FIELD(hideTags),
@@ -1011,7 +1014,7 @@ namespace zonetool::s1
 			attachment->fields = mem->allocate<WAField>(attachment->numFields);
 
 			std::vector<field_info> sorted_fields;
-			for (int i = 0; i < attachment->numFields; i++)
+			for (auto i = 0u; i < attachment->numFields; i++)
 			{
 				field_info info{};
 
@@ -1191,7 +1194,7 @@ namespace zonetool::s1
 
 		if (data->fields)
 		{
-			for (int i = 0; i < data->numFields; i++)
+			for (auto i = 0u; i < data->numFields; i++)
 			{
 #define SUBASSET_CASE(__type__, __asset_type__) \
 				case __type__: \
@@ -1342,7 +1345,7 @@ namespace zonetool::s1
 		{
 			buf->align(3);
 			auto* dest_fields = buf->write(data->fields, data->numFields);
-			for (int i = 0; i < data->numFields; i++)
+			for (unsigned int i = 0; i < data->numFields; i++)
 			{
 				auto type = data->fields[i].type;
 				if (type == WAFIELD_TYPE_STRING ||
@@ -1464,7 +1467,7 @@ namespace zonetool::s1
 		if (asset->fieldOffsets && asset->fields)
 		{
 			data["fields"] = {};
-			for (int i = 0; i < asset->numFields; i++)
+			for (unsigned int i = 0; i < asset->numFields; i++)
 			{
 				const auto field_name = weapon_offset_to_name(asset->fieldOffsets[i]);
 				if (field_name.has_value())

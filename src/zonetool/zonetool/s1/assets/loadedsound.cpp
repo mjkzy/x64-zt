@@ -210,6 +210,12 @@ namespace zonetool::s1
 		file.open("rb");
 
 		auto* result = mem->allocate<LoadedSound>();
+		if (!result)
+		{
+			ZONETOOL_FATAL("Allocating LoadedSound for FLAC failed\n");
+			return nullptr;
+		}
+
 		result->name = mem->duplicate_string(name);
 
 		const auto size = static_cast<int>(file.size());
@@ -241,22 +247,26 @@ namespace zonetool::s1
 
 		auto* fp = file.get_fp();
 		auto* result = mem->allocate<LoadedSound>();
+		if (!result)
+		{
+			ZONETOOL_FATAL("Allocating LoadedSound for WAV failed\n");
+			return nullptr;
+		}
 
 		unsigned int chunkIDBuffer;
 		unsigned int chunkSize;
 
-		fread(&chunkIDBuffer, 4, 1, fp);
-		if (chunkIDBuffer != 0x46464952) // RIFF
+		if (fread(&chunkIDBuffer, 4, 1, fp) != 1 || chunkIDBuffer != 0x46464952) // RIFF
 		{
 			ZONETOOL_FATAL("%s: Invalid RIFF Header.", name.data());
+			return nullptr;
 		}
 
 		fread(&chunkSize, 4, 1, fp);
-		fread(&chunkIDBuffer, 4, 1, fp);
-
-		if (chunkIDBuffer != 0x45564157) // WAVE
+		if (fread(&chunkIDBuffer, 4, 1, fp) != 1 || chunkIDBuffer != 0x45564157) // WAVE
 		{
 			ZONETOOL_FATAL("%s: Invalid WAVE Header.", name.data());
+			return nullptr;
 		}
 
 		while (!result->info.data && !feof(fp))
@@ -273,11 +283,12 @@ namespace zonetool::s1
 					if (format != 1 && format != 17)
 					{
 						ZONETOOL_FATAL("%s: Invalid wave format %i.", name.data(), format);
+						return nullptr;
 					}
 
 					short numChannels;
 					fread(&numChannels, 2, 1, fp);
-					result->info.channels = static_cast<char>(numChannels);
+					result->info.channels = static_cast<unsigned char>(numChannels);
 
 					int sampleRate;
 					fread(&sampleRate, 4, 1, fp);
@@ -288,11 +299,11 @@ namespace zonetool::s1
 
 					short blockAlign;
 					fread(&blockAlign, 2, 1, fp);
-					result->info.blockAlign = static_cast<char>(blockAlign);
+					result->info.blockAlign = static_cast<unsigned char>(blockAlign);
 
 					short bitPerSample;
 					fread(&bitPerSample, 2, 1, fp);
-					result->info.numBits = static_cast<char>(bitPerSample);
+					result->info.numBits = static_cast<unsigned char>(bitPerSample);
 
 					if (chunkSize > 16)
 					{
@@ -303,6 +314,12 @@ namespace zonetool::s1
 
 			case 0x61746164: // data
 				result->info.data = mem->allocate<char>(chunkSize);
+				if (!result->info.data)
+				{
+					ZONETOOL_FATAL("%s: Memory allocation for sound data failed.", name.data());
+					return nullptr;
+				}
+
 				fread(result->info.data, 1, chunkSize, fp);
 
 				result->info.loadedSize = chunkSize;
@@ -322,7 +339,8 @@ namespace zonetool::s1
 
 		if (!result->info.data)
 		{
-			ZONETOOL_FATAL("%s: Could not read sounddata.", name.data());
+			ZONETOOL_FATAL("%s: Could not read sound data.", name.data());
+			return nullptr;
 		}
 
 		result->info.format = SND_FORMAT_PCM;
