@@ -2288,8 +2288,6 @@ namespace zonetool::s1
 
 		ordered_json data;
 
-		data["baseAsset"] = asset->szInternalName;
-
 		WEAPON_DUMP_STRING(szInternalName);
 		WEAPON_DUMP_STRING(szDisplayName);
 		WEAPON_DUMP_STRING(szAltWeaponName);
