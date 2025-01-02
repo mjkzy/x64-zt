@@ -3953,7 +3953,7 @@ namespace zonetool::s1
 		AttHybridSettings* hybridSettings;
 		unsigned short* fieldOffsets;
 		WAField* fields;
-		int numFields; // (MAX_ATTACH_FIELDS_PER_WEAPON = 256)
+		unsigned int numFields; // (MAX_ATTACH_FIELDS_PER_WEAPON = 256)
 		int loadIndex;
 		int adsSettingsMode;
 		float adsSceneBlurStrength;
