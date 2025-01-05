@@ -200,8 +200,8 @@ namespace zonetool::s1
 			//DUMP_ASSET_CONVERT(ASSET_TYPE_VERTEXDECL, vertexdecl, MaterialVertexDeclaration);
 			DUMP_ASSET_CONVERT(ASSET_TYPE_VERTEXSHADER, techset, MaterialVertexShader);
 
-			//DUMP_ASSET_NO_CONVERT(ASSET_TYPE_MENU, menu_def, menuDef_t);
-			//DUMP_ASSET_NO_CONVERT(ASSET_TYPE_MENULIST, menu_list, MenuList);
+			DUMP_ASSET_NO_CONVERT(ASSET_TYPE_MENU, menu_def, menuDef_t);
+			DUMP_ASSET_NO_CONVERT(ASSET_TYPE_MENULIST, menu_list, MenuList);
 
 			DUMP_ASSET_CONVERT(ASSET_TYPE_PATHDATA, aipaths, PathData);
 			DUMP_ASSET_NO_CONVERT(ASSET_TYPE_CLIPMAP, clip_map, clipMap_t);
@@ -400,8 +400,8 @@ namespace zonetool::s1
 			//DUMP_ASSET(ASSET_TYPE_VERTEXDECL, vertex_decl, MaterialVertexDeclaration);
 			DUMP_ASSET(ASSET_TYPE_VERTEXSHADER, vertex_shader, MaterialVertexShader);
 
-			DUMP_ASSET(ASSET_TYPE_MENU, zonetool::h1::menu_def, zonetool::h1::menuDef_t);
-			DUMP_ASSET(ASSET_TYPE_MENULIST, zonetool::h1::menu_list, zonetool::h1::MenuList);
+			DUMP_ASSET(ASSET_TYPE_MENU, menu_def, menuDef_t);
+			DUMP_ASSET(ASSET_TYPE_MENULIST, menu_list, MenuList);
 
 			//DUMP_ASSET(ASSET_TYPE_PATHDATA, path_data, PathData);
 			DUMP_ASSET(ASSET_TYPE_CLIPMAP, clip_map, clipMap_t);

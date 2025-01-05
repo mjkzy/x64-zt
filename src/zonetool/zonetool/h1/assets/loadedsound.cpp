@@ -243,21 +243,24 @@ namespace zonetool::h1
 		auto* result = mem->allocate<LoadedSound>();
 		if (!result)
 		{
-			ZONETOOL_FATAL("Memory allocation failed.");
+			ZONETOOL_FATAL("Memory allocation failed for LoadedSound.");
 			return nullptr;
 		}
 
 		unsigned int chunkIDBuffer;
 		unsigned int chunkSize;
 
-		if (fread(&chunkIDBuffer, 4, 1, fp) != 1 || chunkIDBuffer != 0x46464952) // RIFF
+		fread(&chunkIDBuffer, 4, 1, fp);
+		if (chunkIDBuffer != 0x46464952) // RIFF
 		{
 			ZONETOOL_FATAL("%s: Invalid RIFF Header.", name.data());
 			return nullptr;
 		}
 
 		fread(&chunkSize, 4, 1, fp);
-		if (fread(&chunkIDBuffer, 4, 1, fp) != 1 || chunkIDBuffer != 0x45564157) // WAVE
+		fread(&chunkIDBuffer, 4, 1, fp);
+
+		if (chunkIDBuffer != 0x45564157) // WAVE
 		{
 			ZONETOOL_FATAL("%s: Invalid WAVE Header.", name.data());
 			return nullptr;
