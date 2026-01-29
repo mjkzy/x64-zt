@@ -344,6 +344,8 @@ namespace zonetool::t7
 		globals.dump = false;
 
 		xpak::clear_cache();
+	
+		zonetool::taskbar::clear();
 	}
 
 	utils::hook::detour db_add_xasset_hook;
@@ -421,6 +423,8 @@ namespace zonetool::t7
 		zone.freeFlags = 0;
 		zone.allocSlot = 0;
 		zone.freeSlot = 0;
+
+		zonetool::taskbar::set_indeterminate();
 
 		utils::hook::invoke<void>(0x140506C70);
 		DB_LoadXAssets(&zone, 1, static_cast<qboolean>(sync), 0);

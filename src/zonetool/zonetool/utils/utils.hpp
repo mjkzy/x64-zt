@@ -6,6 +6,7 @@
 #include "io/assetmanager.hpp"
 
 #include "csv.hpp"
+#include "taskbar.hpp"
 
 #include "game/mode.hpp"
 #include "game/shared.hpp"
@@ -46,6 +47,7 @@ namespace nlohmann
 
 #define ZONETOOL_FATAL(__FMT__, ...) \
 	printf("[ FATAL ][ %s ]: " __FMT__ "\n", zonetool::strip_template(__FUNCTION__), __VA_ARGS__); \
+	zonetool::taskbar::set_error(); \
 	MessageBoxA(nullptr, &utils::string::va("Oops! An unexpected error occured. Error was: \n" __FMT__ "\n\nZoneTool must be restarted to resolve the error. Last error code reported by windows: 0x%08X (%u)", __VA_ARGS__, GetLastError(), GetLastError())[0], nullptr, MB_ICONERROR); \
 	std::quick_exit(EXIT_FAILURE)
 

@@ -583,6 +583,8 @@ namespace zonetool::h1
 		ZONETOOL_INFO("Zone \"%s\" dumped.", filesystem::get_fastfile().data());
 
 		globals.dump = false;
+
+		zonetool::taskbar::clear();
 	}
 
 	utils::hook::detour db_link_x_asset_entry1_hook;
@@ -691,6 +693,7 @@ namespace zonetool::h1
 			ZONETOOL_INFO("Loading zone \"%s\"...", name.data());
 		}
 
+		zonetool::taskbar::set_indeterminate();
 		XZoneInfo zone = {name.data(), DB_ZONE_GAME | DB_ZONE_CUSTOM, 0};
 		DB_LoadXAssets(&zone, 1, mode);
 		return true;
@@ -1144,6 +1147,8 @@ namespace zonetool::h1
 			return;
 		}
 
+		zonetool::taskbar::set_indeterminate();
+
 		try
 		{
 			parse_csv_file(zone.get(), fastfile, fastfile);
@@ -1162,6 +1167,8 @@ namespace zonetool::h1
 
 		// compile zone
 		zone->build(buffer.get());
+
+		zonetool::taskbar::clear();
 
 		ignore_assets.clear();
 		clear_asset_fields();

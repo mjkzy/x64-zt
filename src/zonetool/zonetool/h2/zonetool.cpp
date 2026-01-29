@@ -387,6 +387,8 @@ namespace zonetool::h2
 		globals.csv_file = {};
 
 		globals.dump = false;
+
+		zonetool::taskbar::clear();
 	}
 
 	utils::hook::detour db_link_x_asset_entry1_hook;
@@ -464,6 +466,7 @@ namespace zonetool::h2
 			ZONETOOL_INFO("Loading zone \"%s\"...", name.data());
 		}
 
+		zonetool::taskbar::set_indeterminate();
 		XZoneInfo zone = {name.data(), DB_ZONE_LOAD | DB_ZONE_CUSTOM, 0};
 		DB_LoadXAssets(&zone, 1, mode);
 		return true;
@@ -759,6 +762,8 @@ namespace zonetool::h2
 			return;
 		}
 
+		zonetool::taskbar::set_indeterminate();
+
 		parse_csv_file(zone.get(), fastfile, fastfile);
 
 		// allocate zone buffer
@@ -769,6 +774,8 @@ namespace zonetool::h2
 
 		// compile zone
 		zone->build(buffer.get());
+
+		zonetool::taskbar::clear();
 
 		// clear asset shit
 		material::fixed_nml_images_map.clear();
