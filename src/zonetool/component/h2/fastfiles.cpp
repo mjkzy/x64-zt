@@ -23,7 +23,9 @@ namespace h2
 
 			void db_try_load_x_file_internal(const char* zone_name, const int flags)
 			{
+#ifdef DEBUG
 				printf("Loading xfile %s\n", zone_name);
+#endif
 				current_fastfile.access([&](std::string& fastfile)
 				{
 					fastfile = zone_name;

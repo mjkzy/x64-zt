@@ -7,6 +7,8 @@
 
 #include "zonetool/h2/zonetool.hpp"
 
+#include <utils/flags.hpp>
+
 namespace zonetool::h2
 {
 	namespace
@@ -107,16 +109,24 @@ namespace zonetool::h2
 
 		// Reduce min required memory
 		utils::hook::set<uint64_t>(0x14050C717, 0x80000000);*/
+
+		utils::hook::set(0x140630ED0, 0xC300B0); // config
 	}
 
 	void load_common_zones()
 	{
-		static std::vector<std::string> defaultzones =
+		std::vector<std::string> defaultzones;
+
+		if (!utils::flags::has_flag("no_code_post_gfx"))
 		{
-			"code_post_gfx",
-			//"ui_mp",
-			//"common",
-		};
+			defaultzones.push_back("code_post_gfx");
+		}
+
+		if (!utils::flags::has_flag("no_common"))
+		{
+			defaultzones.push_back("techsets_common");
+			defaultzones.push_back("common");
+		}
 
 		XZoneInfo zones[8]{0};
 
