@@ -193,7 +193,7 @@ namespace utils::hook
 		}
 
 		std::sort(result.begin(), result.end());
-		return { std::move(result) };
+		return result;
 	}
 
 	bool signature::has_sse_support() const
@@ -214,7 +214,7 @@ namespace utils::hook
 	}
 }
 
-utils::hook::signature::signature_result operator"" _sig(const char* str, const size_t len)
+utils::hook::signature::signature_result operator""_sig(const char* str, const size_t len)
 {
 	return utils::hook::signature(std::string(str, len)).process();
 }
