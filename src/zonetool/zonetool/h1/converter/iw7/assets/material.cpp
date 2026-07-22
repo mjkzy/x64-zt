@@ -5,8 +5,10 @@
 #ifdef EXPERIMENTAL_IW7
 
 #include "zonetool/iw7/assets/material.hpp"
+#include "zonetool/iw7/assets/techset.hpp"
 
 #include "zonetool/h1/converter/iw7/assets/techset.hpp"
+#include "game/shared.hpp"
 
 namespace zonetool::h1
 {
@@ -16,6 +18,11 @@ namespace zonetool::h1
 		{
 			namespace
 			{
+				constexpr std::array<std::uint8_t, 14> iw7_depth_stencil_from_h1 =
+				{
+					0, 0, 0, 1, 2, 3, 7, 8, 9, 0, 0, 1, 2, 3
+				};
+
 				std::string clean_name(const std::string& name)
 				{
 					auto new_name = name;
@@ -31,6 +38,117 @@ namespace zonetool::h1
 					}
 
 					return new_name;
+				}
+
+				void dump_converted_state_data(zonetool::h1::Material* asset, const std::string& techset, const std::string& material)
+				{
+					const auto state_techset = zonetool::iw7::techset::get_material_data_techset_name(techset);
+					const auto state_path = "techsets\\state\\"s + state_techset + "\\"s + material;
+
+					// The IW7 parser consumes state entries by destination technique type,
+					// whereas H1 stores them by its larger technique-type table.
+					std::array<std::uint8_t, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_COUNT> state_entries{};
+					state_entries.fill(0xFF);
+					std::array<std::uint8_t, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_COUNT> constant_buffer_indexes{};
+					constant_buffer_indexes.fill(0xFF);
+					for (const auto& [source_type, target_type] : converter::iw7::techset::technique_index_map)
+					{
+						if (source_type < 0 || source_type >= zonetool::h1::MaterialTechniqueType::TECHNIQUE_COUNT ||
+							target_type < 0 || target_type >= zonetool::iw7::MaterialTechniqueType::TECHNIQUE_COUNT)
+						{
+							continue;
+						}
+
+						// A material can retain a state-bit entry for a technique that this
+						// particular technique set does not implement.  Do not serialize that
+						// dangling entry: IW7 resolves stateBitsEntry through the compact
+						// technique mask and treats it as corrupt renderer data.
+						if (!asset->techniqueSet || !asset->techniqueSet->techniques[source_type])
+						{
+							continue;
+						}
+
+						if (asset->stateBitsEntry)
+						{
+							state_entries[target_type] = asset->stateBitsEntry[source_type];
+						}
+						if (asset->constantBufferIndex)
+						{
+							constant_buffer_indexes[target_type] = asset->constantBufferIndex[source_type];
+						}
+					}
+
+					auto state_bits_file = zonetool::filesystem::file(state_path + ".statebits");
+					state_bits_file.open("wb");
+					if (state_bits_file.get_fp())
+					{
+						state_bits_file.write(state_entries.data(), state_entries.size(), 1);
+						state_bits_file.close();
+					}
+
+					ordered_json state_info;
+					state_info["stateFlags"] = asset->stateFlags;
+					auto state_info_file = zonetool::filesystem::file(state_path + ".stateinfo");
+					state_info_file.open("wb");
+					if (state_info_file.get_fp())
+					{
+						const auto text = state_info.dump(4);
+						state_info_file.write(text.data(), text.size(), 1);
+						state_info_file.close();
+					}
+
+					ordered_json state_map = json::array();
+					for (auto state_index = 0u; state_index < asset->stateBitsCount; ++state_index)
+					{
+						const auto& source = asset->stateBitsTable[state_index];
+						const auto globals = get_x_gfx_globals_for_zone<zonetool::h1::XGfxGlobals>(source.zone);
+						ordered_json entry;
+
+						// H1 has an extra third raster/depth word (commonly 0xFFFF) that
+						// IW7 does not serialize.  IW7's last four words are its packed
+						// blend-target states, not H1's raw loadBits[3..5].  Those raw H1
+						// values are not always the D3D11 blend descriptor: for example an
+						// H1 value of 0x1F012012 resolves to 0x0F012012 in blendStateBits.
+						// R_SetStateBits consumes the latter representation, so build the
+						// IW7 load bits from the converted global blend-state table.
+						const auto* blend_bits = globals ? globals->blendStateBits[source.blendState] : nullptr;
+						entry["loadBits"] = {
+							source.loadBits[0], source.loadBits[1],
+							blend_bits ? blend_bits[0] : source.loadBits[3],
+							blend_bits ? blend_bits[1] : source.loadBits[4],
+							blend_bits ? blend_bits[2] : source.loadBits[5],
+							0u
+						};
+
+						for (auto target_index = 0u; target_index < iw7_depth_stencil_from_h1.size(); ++target_index)
+						{
+							const auto source_index = iw7_depth_stencil_from_h1[target_index];
+							entry["depthStencilStateBits"][target_index] = globals
+								? globals->depthStencilStateBits[source.depthStencilState[source_index]]
+								: 0ull;
+						}
+						for (auto blend_index = 0u; blend_index < 3; ++blend_index)
+						{
+							entry["blendStateBits"][blend_index] = blend_bits
+								? blend_bits[blend_index]
+								: 0u;
+						}
+						entry["blendStateBits"][3] = 0u;
+						entry["rasterizerState"] = source.rasterizerState;
+						state_map[state_index] = std::move(entry);
+					}
+					auto state_map_file = zonetool::filesystem::file(state_path + ".statebitsmap");
+					state_map_file.open("wb");
+					if (state_map_file.get_fp())
+					{
+						const auto text = state_map.dump(4);
+						state_map_file.write(text.data(), text.size(), 1);
+						state_map_file.close();
+					}
+
+					zonetool::iw7::techset::dump_constant_buffer_indexes(techset, material, constant_buffer_indexes.data());
+					zonetool::iw7::techset::dump_constant_buffer_def_array(techset, material, asset->constantBufferCount,
+						reinterpret_cast<zonetool::iw7::MaterialConstantBufferDef*>(asset->constantBufferTable));
 				}
 
 				enum MaterialType_ : std::uint8_t
@@ -343,7 +461,6 @@ namespace zonetool::h1
 					}
 
 					ZONETOOL_FATAL("Unknown sort key: %d", sort_key);
-					return sort_key;
 				}
 
 				std::uint8_t convert_camera_region(const std::uint8_t camera_region)
@@ -354,7 +471,6 @@ namespace zonetool::h1
 					}
 
 					ZONETOOL_FATAL("Unknown camera region: %d", camera_region);
-					return camera_region;
 				}
 
 				std::uint8_t convert_material_type(const std::uint8_t material_type)
@@ -365,7 +481,6 @@ namespace zonetool::h1
 					}
 
 					ZONETOOL_FATAL("Unknown material type: %d", material_type);
-					return material_type;
 				}
 			}
 
@@ -390,19 +505,14 @@ namespace zonetool::h1
 				MATERIAL_DUMP_STRING(name);
 
 				std::string techset;
-				std::string iw7_techset;
 				if (asset->techniqueSet)
 				{
 					techset = asset->techniqueSet->name;
-					bool result = true;
-					iw7_techset = get_iw7_techset(techset, false, true, false, &result);
-					if (!result)
-					{
-						ZONETOOL_ERROR("Not dumping material \"%s\" : Unknown techset \"%s\"", asset->name, techset.c_str());
-						return;
-					}
-
-					matdata["techniqueSet->name"] = iw7_techset;
+					// This conversion path intentionally keeps the H1 technique set.  The
+					// paired techset converter produces the IW7-layout asset with this same
+					// source suffix; selecting a native IW7 substitute here breaks the
+					// shader/argument contract that the converted techniques preserve.
+					matdata["techniqueSet->name"] = game::add_source_postfix(techset, game::h1);
 					matdata["techniqueSet->og_name"] = techset;
 				}
 
@@ -426,7 +536,7 @@ namespace zonetool::h1
 				matdata["assetFlags"] = asset->assetFlags;
 
 				ordered_json constant_table = json::array();
-				for (int i = 0; i < asset->constantCount && techset != "2d"; i++)
+				for (int i = 0; i < asset->constantCount; i++)
 				{
 					ordered_json table;
 					std::string constant_name = asset->constantTable[i].name;
@@ -435,11 +545,6 @@ namespace zonetool::h1
 					if (constant_name.size() > 12)
 					{
 						constant_name.resize(12);
-					}
-
-					if (constant_hash == 1033475292) // envMapParms
-					{
-						continue;
 					}
 
 					table["name"] = constant_name.data();
@@ -456,64 +561,11 @@ namespace zonetool::h1
 
 					constant_table[constant_table.size()] = table;
 				}
-
-#define CONSTANT_TABLE_ADD_IF_NOT_FOUND(CONST_NAME, CONST_HASH, LITERAL_1, LITERAL_2, LITERAL_3, LITERAL_4) \
-				{ \
-				bool has_const = false; \
-				std::size_t insert_position = constant_table.size(); \
-				for (std::size_t i = 0; i < constant_table.size(); i++) \
-				{ \
-					if (constant_table[i]["nameHash"].get<std::size_t>() == CONST_HASH) \
-					{ \
-						has_const = true; \
-						break; \
-					} \
-					if (constant_table[i]["nameHash"].get<std::size_t>() > CONST_HASH) \
-					{ \
-						insert_position = i; \
-						break; \
-					} \
-				} \
-				if (!has_const) \
-				{ \
-					ordered_json table; \
-					table["name"] = CONST_NAME; \
-					table["nameHash"] = CONST_HASH; \
-					nlohmann::json literal_entry; \
-					literal_entry[0] = LITERAL_1; \
-					literal_entry[1] = LITERAL_2; \
-					literal_entry[2] = LITERAL_3; \
-					literal_entry[3] = LITERAL_4; \
-					table["literal"] = literal_entry; \
-					constant_table.insert(constant_table.begin() + insert_position, table); \
-				} \
-				}
-
-				CONSTANT_TABLE_ADD_IF_NOT_FOUND("colorTint", 3054254906, 1.0f, 1.0f, 1.0f, 1.0f);
-
-				if (iw7_techset.find("s0") != std::string::npos)
-				{
-					CONSTANT_TABLE_ADD_IF_NOT_FOUND("reflectionRa", 3344177073u, 8096.0f, 0.0f, 0.0f, 0.0f);
-				}
-				if (iw7_techset.find("_lin") != std::string::npos)
-				{
-					CONSTANT_TABLE_ADD_IF_NOT_FOUND("textureAtlas", 1128936273u,
-						static_cast<float>(asset->info.textureAtlasColumnCount), static_cast<float>(asset->info.textureAtlasRowCount), 1.0f, 1.0f);
-				}
-
 				matdata["constantTable"] = constant_table;
-
-				if (iw7_techset == "w_sky")
-					matdata["constantTable"] = nullptr;
 
 				ordered_json material_images = json::array();
 				for (auto i = 0; i < asset->textureCount; i++)
 				{
-					if (asset->textureTable[i].nameHash == 3447584578) // ~envbrdflut_ggx_16-rg
-					{
-						continue;
-					}
-
 					ordered_json image;
 					if (asset->textureTable[i].u.image && asset->textureTable[i].u.image->name)
 					{
@@ -534,44 +586,6 @@ namespace zonetool::h1
 					// add image data to material
 					material_images.push_back(image);
 				}
-
-#define IMAGE_ADD_IF_NOT_FOUND(IMAGE, SEMANTIC, SAMPLER_STATE, LAST_CHARACTER, FIRST_CHARACTER, HASH) \
-				bool has_image = false; \
-				std::size_t insert_position = material_images.size(); \
-				for (std::size_t i = 0; i < material_images.size(); i++) \
-				{ \
-					if (material_images[i]["typeHash"].get<std::size_t>() == HASH) \
-					{ \
-						has_image = true; \
-						break; \
-					} \
-					if (material_images[i]["typeHash"].get<std::size_t>() > HASH) \
-					{ \
-						insert_position = i; \
-						break; \
-					} \
-				} \
-				if (!has_image) \
-				{ \
-					ordered_json image; \
-					image["image"] = IMAGE; \
-					image["semantic"] = SEMANTIC; \
-					image["samplerState"] = SAMPLER_STATE; \
-					image["lastCharacter"] = LAST_CHARACTER; \
-					image["firstCharacter"] = FIRST_CHARACTER; \
-					image["typeHash"] = HASH; \
-					material_images.insert(material_images.begin() + insert_position, image); \
-				}
-
-				if (iw7_techset.find("v0") != std::string::npos)
-				{
-					IMAGE_ADD_IF_NOT_FOUND("$identitynormalmap", 16, 19, 112, 115, 2771134132);
-				}
-				if (iw7_techset.find("pa0") != std::string::npos)
-				{
-					IMAGE_ADD_IF_NOT_FOUND("$identitynormalmap", 16, 20, 112, 115, 2771134132);
-				}
-
 				matdata["textureTable"] = material_images;
 
 				ordered_json sub_materials = json::array();
@@ -706,10 +720,11 @@ namespace zonetool::h1
 			void dump(zonetool::h1::Material* asset)
 			{
 				dump_json(asset);
-
-				//utils::memory::allocator allocator;
-				//const auto converted_asset = convert(asset, allocator);
-				//zonetool::iw7::material::dump(converted_asset);
+				if (asset && asset->techniqueSet)
+				{
+					dump_converted_state_data(asset, game::add_source_postfix(asset->techniqueSet->name, game::h1),
+						clean_name(asset->name));
+				}
 			}
 		}
 	}

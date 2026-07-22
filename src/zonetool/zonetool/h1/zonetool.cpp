@@ -430,7 +430,9 @@ namespace zonetool::h1
 			//DUMP_ASSET(ASSET_TYPE_SOUND, sound, snd_alias_list_t);
 			DUMP_ASSET_NO_CONVERT(ASSET_TYPE_STRINGTABLE, string_table, StringTable);
 			DUMP_ASSET_NO_CONVERT(ASSET_TYPE_STRUCTURED_DATA_DEF, structured_data_def_set, StructuredDataDefSet);
-			//DUMP_ASSET(ASSET_TYPE_TECHNIQUE_SET, techset, MaterialTechniqueSet);
+			// Materials now retain the H1-derived techset name instead of falling back
+			// to an IW7 stock techset, so emit the converted technique-set assets too.
+			DUMP_ASSET(ASSET_TYPE_TECHNIQUE_SET, techset, MaterialTechniqueSet);
 			//DUMP_ASSET(ASSET_TYPE_TRACER, tracer_def, TracerDef);
 			DUMP_ASSET_NO_CONVERT(ASSET_TYPE_TTF, ttf_def, TTFDef);
 			//DUMP_ASSET(ASSET_TYPE_ATTACHMENT, weapon_attachment, WeaponAttachment);
@@ -439,12 +441,12 @@ namespace zonetool::h1
 			DUMP_ASSET(ASSET_TYPE_XMODEL, xmodel, XModel);
 			DUMP_ASSET(ASSET_TYPE_XMODEL_SURFS, xsurface, XModelSurfs);
 
-			//DUMP_ASSET(ASSET_TYPE_COMPUTESHADER, techset, ComputeShader);
-			//DUMP_ASSET(ASSET_TYPE_DOMAINSHADER, techset, MaterialDomainShader);
-			//DUMP_ASSET(ASSET_TYPE_HULLSHADER, techset, MaterialHullShader);
-			//DUMP_ASSET(ASSET_TYPE_PIXELSHADER, techset, MaterialPixelShader);
+			DUMP_ASSET(ASSET_TYPE_COMPUTESHADER, techset, ComputeShader);
+			DUMP_ASSET(ASSET_TYPE_DOMAINSHADER, techset, MaterialDomainShader);
+			DUMP_ASSET(ASSET_TYPE_HULLSHADER, techset, MaterialHullShader);
+			DUMP_ASSET(ASSET_TYPE_PIXELSHADER, techset, MaterialPixelShader);
 			////DUMP_ASSET(ASSET_TYPE_VERTEXDECL, techset, MaterialVertexDeclaration);
-			//DUMP_ASSET(ASSET_TYPE_VERTEXSHADER, techset, MaterialVertexShader);
+			DUMP_ASSET(ASSET_TYPE_VERTEXSHADER, techset, MaterialVertexShader);
 
 			DUMP_ASSET(ASSET_TYPE_PATHDATA, path_data, PathData);
 			DUMP_ASSET(ASSET_TYPE_CLIPMAP, clip_map, clipMap_t);

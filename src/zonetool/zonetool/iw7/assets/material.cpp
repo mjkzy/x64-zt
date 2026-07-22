@@ -214,29 +214,31 @@ namespace zonetool::iw7
 			}
 		}
 
-		auto max_state_index = 0;
-		for (auto i = 0; i < MaterialTechniqueType::TECHNIQUE_COUNT; i++)
+		// At material-parse time techniqueSet is the DB placeholder returned by
+		// db_find_x_asset_header(..., create_default = 1).  The zone's real
+		// technique-set asset is only parsed later through load_depending(), so
+		// its masks, compact indices and pass counts are not available here.
+		//
+		// Do not validate the placeholder as if it were the parsed techset: that
+		// made every H1-derived material fail on its first state-bit entry even
+		// when the emitted .techset contains the matching bit.  Preserve the full
+		// state-bit table instead of trimming it here; a pass consumes consecutive
+		// records and the source count is the only valid count at this stage.
+		if (mat->stateBitsTable && mat->stateBitsCount)
 		{
-			if (mat->stateBitsEntry[i] == 0xFF)
+			for (auto i = 0; i < MaterialTechniqueType::TECHNIQUE_COUNT; i++)
 			{
-				continue;
+				if (mat->stateBitsEntry[i] == 0xFF)
+				{
+					continue;
+				}
+
+				if (mat->stateBitsEntry[i] >= mat->stateBitsCount)
+				{
+					ZONETOOL_FATAL("Material %s has an out-of-range statebit entry %u for technique %i.",
+						mat->name, mat->stateBitsEntry[i], i);
+				}
 			}
-
-			if (mat->stateBitsEntry[i] > max_state_index)
-			{
-				max_state_index = mat->stateBitsEntry[i];
-			}
-		}
-
-		if (max_state_index >= mat->stateBitsCount)
-		{
-			ZONETOOL_FATAL("Material %s is referencing more statebit entries than it has!", mat->name);
-		}
-
-		if (max_state_index < mat->stateBitsCount - 1)
-		{
-			ZONETOOL_INFO("Material %s has %u statebits but only %u are used, removing unused statebits.", mat->name, mat->stateBitsCount, max_state_index + 1);
-			mat->stateBitsCount = static_cast<unsigned char>(max_state_index + 1);
 		}
 
 		return mat;

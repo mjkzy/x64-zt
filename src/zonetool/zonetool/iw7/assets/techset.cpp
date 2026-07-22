@@ -9,6 +9,8 @@
 
 //#include "zonetool/iw7/zonetool.hpp"
 
+#include <utils/cryptography.hpp>
+
 namespace zonetool::iw7
 {
 	std::string clean_name(const std::string& name)
@@ -30,6 +32,40 @@ namespace zonetool::iw7
 
 	std::unordered_map<std::string, std::uintptr_t> techset::vertexdecl_pointers;
 
+	std::string techset::get_material_data_techset_name(const std::string& techset)
+	{
+		const auto cleaned = clean_name(techset);
+		if (!cleaned.ends_with("_h1"))
+		{
+			return cleaned;
+		}
+
+		// The H1 converter's direct techset names are deliberately descriptive and
+		// can be very long.  On the MWR dump path, appending a material name and
+		// ".statebitsmap" crosses MAX_PATH (the corresponding .statebits file is
+		// a few bytes shorter and succeeds), silently producing incomplete data.
+		// Keep the asset name intact and use a deterministic compact directory only
+		// for its per-material auxiliary data.
+		const auto crc = utils::cryptography::crc32::compute(
+			reinterpret_cast<const std::uint8_t*>(cleaned.data()), cleaned.size());
+		return utils::string::va("h1_%08X", crc);
+	}
+
+	namespace
+	{
+		std::string get_technique_file_name(const std::string& name)
+		{
+			if (!name.ends_with("_h1"))
+			{
+				return name;
+			}
+
+			const auto crc = utils::cryptography::crc32::compute(
+				reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
+			return utils::string::va("h1t_%08X", crc);
+		}
+	}
+
 	std::uintptr_t techset::get_vertexdecl_pointer(std::string vertexdecl)
 	{
 		if (vertexdecl_pointers.find(vertexdecl) != vertexdecl_pointers.end())
@@ -50,13 +86,17 @@ namespace zonetool::iw7
 
 	MaterialTechnique* parse_technique(const std::string& name, zone_memory* mem, std::uint32_t index)
 	{
-		const auto path = "techsets\\" + name + ".technique";
+		auto path = "techsets\\" + name + ".technique";
 
 		assetmanager::reader reader(mem);
 		if (!reader.open(path))
 		{
-			ZONETOOL_FATAL("technique \"%s\" is missing.", name.data());
-			return nullptr;
+			const auto compact_name = get_technique_file_name(name);
+			if (compact_name == name || !reader.open("techsets\\" + compact_name + ".technique"))
+			{
+				ZONETOOL_FATAL("technique \"%s\" is missing.", name.data());
+				return nullptr;
+			}
 		}
 
 		//ZONETOOL_INFO("Parsing technique \"%s\"...", name.data());
@@ -182,8 +222,9 @@ namespace zonetool::iw7
 
 		std::string get_parse_path(const std::string& type, const std::string& ext, const std::string& techset, const std::string& material, bool* is_random = nullptr)
 		{
-			const std::string parent_path = utils::string::va("techsets\\%s\\%s", type.data(), techset.data());
+			const std::string canonical_parent_path = utils::string::va("techsets\\%s\\%s", type.data(), clean_name(techset).data());
 			const std::string file = utils::string::va("%s%s", material.data(), ext.data());
+			std::string parent_path = canonical_parent_path;
 			std::string path = parent_path + "\\" + file;
 
 			if (filesystem::file(path).exists())
@@ -191,11 +232,22 @@ namespace zonetool::iw7
 				return path;
 			}
 
+			const auto compact_techset = techset::get_material_data_techset_name(techset);
+			if (compact_techset != clean_name(techset))
+			{
+				parent_path = utils::string::va("techsets\\%s\\%s", type.data(), compact_techset.data());
+				path = parent_path + "\\" + file;
+				if (filesystem::file(path).exists())
+				{
+					return path;
+				}
+			}
+
 			// get a random one from the directory
 			{
 				for (const auto& parse_path : filesystem::get_search_paths())
 				{
-					const std::string dir = parse_path + parent_path;
+				const std::string dir = parse_path + parent_path;
 					const auto first_file = find_first_file_with_extension_in_directory(dir, ext);
 					if (first_file.has_value() && !first_file.value().empty())
 					{
@@ -595,7 +647,7 @@ namespace zonetool::iw7
 
 	void techset::dump_constant_buffer_indexes(const std::string& techset, const std::string& material, unsigned char* cbi)
 	{
-		const auto path = "techsets\\constantbuffer\\"s + clean_name(techset) + "\\"s + material + ".cbi";
+		const auto path = "techsets\\constantbuffer\\"s + get_material_data_techset_name(techset) + "\\"s + material + ".cbi";
 		auto file = filesystem::file(path);
 		file.open("wb");
 		auto fp = file.get_fp();
@@ -609,7 +661,7 @@ namespace zonetool::iw7
 
 	void techset::dump_constant_buffer_def_array(const std::string& techset, const std::string& material, unsigned char count, MaterialConstantBufferDef* def)
 	{
-		const auto path = "techsets\\constantbuffer\\"s + clean_name(techset) + "\\"s + material + ".cbt";
+		const auto path = "techsets\\constantbuffer\\"s + get_material_data_techset_name(techset) + "\\"s + material + ".cbt";
 		assetmanager::dumper dump;
 		if (!dump.open(path))
 		{
@@ -659,7 +711,7 @@ namespace zonetool::iw7
 
 	void techset::dump_stateinfo(const std::string& techset, const std::string& material, Material* mat)
 	{
-		const auto path = "techsets\\state\\"s + clean_name(techset) + "\\"s + material + ".stateinfo";
+		const auto path = "techsets\\state\\"s + get_material_data_techset_name(techset) + "\\"s + material + ".stateinfo";
 
 		ordered_json json_data = {};
 
@@ -678,7 +730,7 @@ namespace zonetool::iw7
 
 	void techset::dump_statebits(const std::string& techset, const std::string& material, unsigned char* statebits)
 	{
-		const auto path = "techsets\\state\\"s + clean_name(techset) + "\\"s + material + ".statebits";
+		const auto path = "techsets\\state\\"s + get_material_data_techset_name(techset) + "\\"s + material + ".statebits";
 		auto file = filesystem::file(path);
 		file.open("wb");
 		auto fp = file.get_fp();
@@ -692,7 +744,7 @@ namespace zonetool::iw7
 
 	void techset::dump_statebits_map(const std::string& techset, const std::string& material, GfxStateBits* map, unsigned char count)
 	{
-		const auto path = "techsets\\state\\"s + clean_name(techset) + "\\"s + material + ".statebitsmap";
+		const auto path = "techsets\\state\\"s + get_material_data_techset_name(techset) + "\\"s + material + ".statebitsmap";
 
 		ordered_json json_data = {};
 		for (unsigned char i = 0; i < count; i++)
@@ -730,7 +782,10 @@ namespace zonetool::iw7
 
 	void techset::dump_technique(MaterialTechnique* asset)
 	{
-		const auto path = "techsets\\"s + asset->hdr.name + ".technique";
+		// Technique identifiers stay in the techset so the renderer sees their
+		// original H1-derived names.  Only the backing filename is compacted to
+		// keep the MWR dump path below MAX_PATH.
+		const auto path = "techsets\\"s + get_technique_file_name(asset->hdr.name) + ".technique";
 
 		assetmanager::dumper dumper;
 		if (!dumper.open(path))

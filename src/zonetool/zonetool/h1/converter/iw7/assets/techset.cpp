@@ -12,13 +12,26 @@
 #include "zonetool/iw7/assets/domainshader.hpp"
 #include "zonetool/iw7/assets/pixelshader.hpp"
 
+#include <shader-tool/shader.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cstring>
+#include <unordered_map>
+#include <vector>
+
 #include <utils/io.hpp>
 namespace zonetool::h1
 {
 	namespace converter::iw7
 	{
-		namespace techset
-		{
+			namespace techset
+			{
+				enum shader_type_flag_e : std::uint8_t
+				{
+					shader_flag_pixel_shader = 0x10,
+				};
+
 			std::unordered_map<unsigned short, unsigned short> mapped_code_consts =
 			{
 				{zonetool::h1::CONST_SRC_CODE_LIGHT_POSITION, zonetool::iw7::CONST_SRC_CODE_LIGHT_POSITION},
@@ -447,6 +460,107 @@ namespace zonetool::h1
 				{zonetool::h1::CONST_SRC_NONE, zonetool::iw7::CONST_SRC_NONE},
 			};
 
+			// IW7 removed H1's four-entry dynamic-light and cascade-specific code
+			// constants.  Its renderer still exposes the corresponding current-light
+			// and sun-shadow values through the entries below.  Bind every H1 array
+			// member to that live IW7 value rather than CONST_SRC_NONE (zero), which
+			// is what made the H1 lprobe/light passes evaluate black.  This keeps the
+			// original H1 DXBC and H1 techniques; only the renderer-facing source of
+			// each argument changes.
+			const bool h1_iw7_compatibility_constant_map = []
+			{
+				auto map_range = [](const auto source_first, const auto count, const auto target)
+				{
+					for (auto offset = 0; offset < count; ++offset)
+					{
+						mapped_code_consts.emplace(static_cast<unsigned short>(source_first + offset),
+							static_cast<unsigned short>(target));
+					}
+				};
+				auto map_light = [](const auto position, const auto diffuse, const auto physical_size, const auto fade_offset,
+					const auto specular, const auto spot_dir, const auto spot_factors, const auto falloff, const auto cu_coloris)
+				{
+					mapped_code_consts.emplace(position, zonetool::iw7::CONST_SRC_CODE_LIGHT_POSITION);
+					mapped_code_consts.emplace(diffuse, zonetool::iw7::CONST_SRC_CODE_LIGHT_DIFFUSE);
+					mapped_code_consts.emplace(physical_size, zonetool::iw7::CONST_SRC_CODE_LIGHT_PHYSICALSIZE);
+					mapped_code_consts.emplace(fade_offset, zonetool::iw7::CONST_SRC_CODE_LIGHT_FADEOFFSET);
+					mapped_code_consts.emplace(specular, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPECULAR);
+					mapped_code_consts.emplace(spot_dir, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPOTDIR);
+					mapped_code_consts.emplace(spot_factors, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPOTFACTORS);
+					mapped_code_consts.emplace(falloff, zonetool::iw7::CONST_SRC_CODE_LIGHT_FADEOFFSET);
+					mapped_code_consts.emplace(cu_coloris, zonetool::iw7::CONST_SRC_CODE_LIGHT_IES_LOOKUP);
+				};
+				map_light(zonetool::h1::CONST_SRC_CODE_LIGHT_POSITION1, zonetool::h1::CONST_SRC_CODE_LIGHT_DIFFUSE1,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_PHYSICALSIZE1, zonetool::h1::CONST_SRC_CODE_LIGHT_FADEOFFSET1,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_SPECULAR1, zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTDIR1,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTFACTORS1, zonetool::h1::CONST_SRC_CODE_LIGHT_FALLOFF_PLACEMENT1,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_CUCOLORIS_ANIM1);
+				map_light(zonetool::h1::CONST_SRC_CODE_LIGHT_POSITION2, zonetool::h1::CONST_SRC_CODE_LIGHT_DIFFUSE2,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_PHYSICALSIZE2, zonetool::h1::CONST_SRC_CODE_LIGHT_FADEOFFSET2,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_SPECULAR2, zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTDIR2,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTFACTORS2, zonetool::h1::CONST_SRC_CODE_LIGHT_FALLOFF_PLACEMENT2,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_CUCOLORIS_ANIM2);
+				map_light(zonetool::h1::CONST_SRC_CODE_LIGHT_POSITION3, zonetool::h1::CONST_SRC_CODE_LIGHT_DIFFUSE3,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_PHYSICALSIZE3, zonetool::h1::CONST_SRC_CODE_LIGHT_FADEOFFSET3,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_SPECULAR3, zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTDIR3,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTFACTORS3, zonetool::h1::CONST_SRC_CODE_LIGHT_FALLOFF_PLACEMENT3,
+					zonetool::h1::CONST_SRC_CODE_LIGHT_CUCOLORIS_ANIM3);
+
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_POSITION_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_POSITION);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_DIFFUSE_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_DIFFUSE);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_PHYSICALSIZE_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_PHYSICALSIZE);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_FADEOFFSET_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_FADEOFFSET);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_SPECULAR_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPECULAR);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTDIR_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPOTDIR);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_SPOTFACTORS_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPOTFACTORS);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_CUCOLORIS_ANIM_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_IES_LOOKUP);
+				map_range(zonetool::h1::CONST_SRC_CODE_LIGHT_FALLOFF_PLACEMENT_DB_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_FADEOFFSET);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_LIGHT_FALLOFF_PLACEMENT, zonetool::iw7::CONST_SRC_CODE_LIGHT_FADEOFFSET);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_LIGHT_CUCOLORIS_ANIM, zonetool::iw7::CONST_SRC_CODE_LIGHT_IES_LOOKUP);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_LIGHT_DYN_COUNT, zonetool::iw7::CONST_SRC_CODE_PACKED_LIGHT_COUNT);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_LIGHT_DYN_TYPES, zonetool::iw7::CONST_SRC_CODE_SHADOW_ARRAY_INDEX);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_LIGHT_DYN_SHADOW_TYPES, zonetool::iw7::CONST_SRC_CODE_SHADOW_ARRAY_INDEX);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SCRIPT_PARMS, zonetool::iw7::CONST_SRC_CODE_CODE_MESH_ARG_0);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_MODEL_VELOCITY_PARMS, zonetool::iw7::CONST_SRC_CODE_MODEL_MOTIONBLUR_VELOCITY_PARMS);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_MODEL_VELOCITY_SKINNED_PARMS, zonetool::iw7::CONST_SRC_CODE_MODEL_MOTIONBLUR_VELOCITY_PARMS);
+
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_SWITCH_PARTITION_ARRAY_0, zonetool::iw7::CONST_SRC_CODE_SUNSHADOW_SWITCH_PARTITION_NEAR);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_SWITCH_PARTITION_ARRAY_1, zonetool::iw7::CONST_SRC_CODE_SUNSHADOW_SWITCH_PARTITION_FAR);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_DISTANCE_BIAS, zonetool::iw7::CONST_SRC_CODE_STATIC_SUN_SHADOW_PARAMS0);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_SCALE, zonetool::iw7::CONST_SRC_CODE_STATIC_SUN_SHADOW_PARAMS1);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_PARTITION_UV_OFFSET, zonetool::iw7::CONST_SRC_CODE_STATIC_SUN_SHADOW_PARAMS2);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_CASCADE_MASK, zonetool::iw7::CONST_SRC_CODE_SUNSHADOW_SWITCH_PARTITION_DISTANT);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SHADOWMAP_DISTANCE_BLEND, zonetool::iw7::CONST_SRC_CODE_SUNSHADOW_SWITCH_PARTITION_TRANS);
+
+				map_range(zonetool::h1::CONST_SRC_CODE_SUN_SHADOWMAP_PIXEL_ADJUST_ARRAY_0, 3, zonetool::iw7::CONST_SRC_CODE_SUN_SHADOWMAP_SIZE);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SUN_SHADOWMAP_CASCADE_V_CLAMP, zonetool::iw7::CONST_SRC_CODE_SUN_SHADOWMAP_FILTER_RADIUS);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_SUN_SHADOWMAP_NEAR_FAR_PLANE, zonetool::iw7::CONST_SRC_CODE_STATIC_SUN_SHADOW_PARAMS0);
+				map_range(zonetool::h1::CONST_SRC_CODE_SPOT_SHADOWMAP_PIXEL_ADJUST, 4, zonetool::iw7::CONST_SRC_CODE_SHADOW_ARRAY_INDEX);
+				map_range(zonetool::h1::CONST_SRC_CODE_SPOT_SHADOWMAP_PIXEL_ADJUST_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_SHADOW_ARRAY_INDEX);
+				map_range(zonetool::h1::CONST_SRC_CODE_SPOT_SHADOWMAP_ZTRANSFORM, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPOTFACTORS);
+				map_range(zonetool::h1::CONST_SRC_CODE_SPOT_SHADOWMAP_ZTRANSFORM_ARRAY_0, 4, zonetool::iw7::CONST_SRC_CODE_LIGHT_SPOTFACTORS);
+
+				map_range(zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_0, 6, zonetool::iw7::CONST_SRC_CODE_FOG);
+				mapped_code_consts[zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_1] = zonetool::iw7::CONST_SRC_CODE_FOG_COLOR;
+				mapped_code_consts[zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_2] = zonetool::iw7::CONST_SRC_CODE_FOG_SUN_CONSTS;
+				mapped_code_consts[zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_3] = zonetool::iw7::CONST_SRC_CODE_FOG_SUN_COLOR;
+				mapped_code_consts[zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_4] = zonetool::iw7::CONST_SRC_CODE_FOG_SUN_DIR;
+				mapped_code_consts[zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_5] = zonetool::iw7::CONST_SRC_CODE_FOG_HEIGHT;
+				mapped_code_consts[zonetool::h1::CONST_SRC_CODE_ATMOS_FOG_PARMS_6] = zonetool::iw7::CONST_SRC_CODE_SKY_BLEND_CONSTS;
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_HDR_STAGE_PARMS, zonetool::iw7::CONST_SRC_CODE_TONEMAP_PARMS);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_DEBUG_BUMPMAP, zonetool::iw7::CONST_SRC_CODE_DEBUG_PARAMETERS0);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_ZNEAR, zonetool::iw7::CONST_SRC_CODE_ZPLANES);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_LIGHT_PROBE_AMBIENT, zonetool::iw7::CONST_SRC_CODE_SUN_LIGHT_COLOR_AND_UV);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_PARTICLE_CLOUD_TEXTURE_ATLAS_SETTINGS, zonetool::iw7::CONST_SRC_CODE_PARTICLE_CLOUD_MATRIX0);
+				mapped_code_consts.emplace(zonetool::h1::CONST_SRC_CODE_PARTICLE_CLOUD_VEL_WORLD, zonetool::iw7::CONST_SRC_CODE_PARTICLE_CLOUD_MATRIX1);
+
+				map_range(zonetool::h1::CONST_SRC_CODE_TRANSPOSE_SHADOW_LOOKUP_MATRIX, 1, zonetool::iw7::CONST_SRC_CODE_TRANSPOSE_SUN_SHADOW_LOOKUP_MATRIX);
+				map_range(zonetool::h1::CONST_SRC_CODE_TRANSPOSE_SHADOW_LOOKUP_MATRIX1, 1, zonetool::iw7::CONST_SRC_CODE_TRANSPOSE_SUN_SHADOW_LOOKUP_MATRIX);
+				map_range(zonetool::h1::CONST_SRC_CODE_TRANSPOSE_SHADOW_LOOKUP_MATRIX2, 1, zonetool::iw7::CONST_SRC_CODE_TRANSPOSE_SUN_SHADOW_LOOKUP_MATRIX);
+				map_range(zonetool::h1::CONST_SRC_CODE_TRANSPOSE_SHADOW_LOOKUP_MATRIX3, 1, zonetool::iw7::CONST_SRC_CODE_TRANSPOSE_SUN_SHADOW_LOOKUP_MATRIX);
+				return true;
+			}();
+
 			const std::unordered_map <std::uint32_t, std::uint32_t> texture_src_code_map =
 			{
 				{zonetool::h1::TEXTURE_SRC_CODE_BLACK, zonetool::iw7::TEXTURE_SRC_CODE_BLACK},
@@ -455,28 +569,34 @@ namespace zonetool::h1
 				{zonetool::h1::TEXTURE_SRC_CODE_MODEL_LIGHTING, zonetool::iw7::TEXTURE_SRC_CODE_MODEL_LIGHTING},
 				{zonetool::h1::TEXTURE_SRC_CODE_LIGHTMAP_PRIMARY, zonetool::iw7::TEXTURE_SRC_CODE_LIGHTMAP_PRIMARY},
 				{zonetool::h1::TEXTURE_SRC_CODE_LIGHTMAP_SECONDARY, zonetool::iw7::TEXTURE_SRC_CODE_LIGHTMAP_SECONDARY},
-				//{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SUN, zonetool::iw7::TEXTURE_SRC_CODE_SHADOWMAP_SUN},
-				//{zonetool::h1::TEXTURE_SRC_CODE_TRANS_SHADOWMAP_SUN, zonetool::iw7::TEXTURE_SRC_CODE_TRANS_SHADOWMAP_SUN},
-				//{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT, zonetool::iw7::TEXTURE_SRC_CODE_SHADOWMAP_SPOT},
-				//{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_1, zonetool::iw7::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_1},
-				//{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_2, zonetool::iw7::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_2},
-				//{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_3, zonetool::iw7::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_3},
+				{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SUN, zonetool::iw7::TEXTURE_SRC_CODE_SUN_SHADOWMAP_ARRAY},
+				{zonetool::h1::TEXTURE_SRC_CODE_TRANS_SHADOWMAP_SUN, zonetool::iw7::TEXTURE_SRC_CODE_SUN_TRANSMITTANCE},
+				{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT, zonetool::iw7::TEXTURE_SRC_CODE_SPOT_SHADOWMAP_ARRAY},
+				{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_1, zonetool::iw7::TEXTURE_SRC_CODE_SPOT_SHADOWMAP_ARRAY},
+				{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_2, zonetool::iw7::TEXTURE_SRC_CODE_SPOT_SHADOWMAP_ARRAY},
+				{zonetool::h1::TEXTURE_SRC_CODE_SHADOWMAP_SPOT_3, zonetool::iw7::TEXTURE_SRC_CODE_SPOT_SHADOWMAP_ARRAY},
 				{zonetool::h1::TEXTURE_SRC_CODE_FEEDBACK, zonetool::iw7::TEXTURE_SRC_CODE_FEEDBACK},
 				//{zonetool::h1::TEXTURE_SRC_CODE_RESOLVED_POST_SUN, zonetool::iw7::TEXTURE_SRC_CODE_RESOLVED_POST_SUN},
-				//{zonetool::h1::TEXTURE_SRC_CODE_SSR_BUFFER, zonetool::iw7::TEXTURE_SRC_CODE_SSR_BUFFER},
+				// IW7 has no dedicated prebuilt SSR buffer source.  Its resolved scene
+				// is the live post-lighting input used by the equivalent screen-space
+				// passes, and is preferable to the old black fallback.
+				{zonetool::h1::TEXTURE_SRC_CODE_SSR_BUFFER, zonetool::iw7::TEXTURE_SRC_CODE_RESOLVED_SCENE},
 				//{zonetool::h1::TEXTURE_SRC_CODE_HQ_SSR_DEPTH, zonetool::iw7::TEXTURE_SRC_CODE_HQ_SSR_DEPTH},
 				//{zonetool::h1::TEXTURE_SRC_CODE_BLUR_DISTORTION_BUFFER,	zonetool::iw7::TEXTURE_SRC_CODE_BLUR_DISTORTION_BUFFER},
 				{zonetool::h1::TEXTURE_SRC_CODE_RESOLVED_SCENE, zonetool::iw7::TEXTURE_SRC_CODE_RESOLVED_SCENE},
 				{zonetool::h1::TEXTURE_SRC_CODE_POST_EFFECT_0, zonetool::iw7::TEXTURE_SRC_CODE_POST_EFFECT_0},
 				{zonetool::h1::TEXTURE_SRC_CODE_POST_EFFECT_1, zonetool::iw7::TEXTURE_SRC_CODE_POST_EFFECT_1},
 				{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_ATTENUATION, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_ATTENUATION},
-				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS},
+				// IW7 represents the light cookie as its IES lookup texture rather than
+				// H1's per-light cucoloris slots.  Using it preserves a live light
+				// projection sampler instead of binding black for every cookie pass.
+				{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS, zonetool::iw7::TEXTURE_SRC_CODE_IES_LOOKUP},
 				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_ATTENUATION1, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_ATTENUATION1},
-				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS1, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS1},
+				{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS1, zonetool::iw7::TEXTURE_SRC_CODE_IES_LOOKUP},
 				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_ATTENUATION2, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_ATTENUATION2},
-				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS2, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS2},
+				{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS2, zonetool::iw7::TEXTURE_SRC_CODE_IES_LOOKUP},
 				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_ATTENUATION3, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_ATTENUATION3},
-				//{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS3, zonetool::iw7::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS3},
+				{zonetool::h1::TEXTURE_SRC_CODE_LIGHT_CUCOLORIS3, zonetool::iw7::TEXTURE_SRC_CODE_IES_LOOKUP},
 				{zonetool::h1::TEXTURE_SRC_CODE_OUTDOOR, zonetool::iw7::TEXTURE_SRC_CODE_OUTDOOR},
 				{zonetool::h1::TEXTURE_SRC_CODE_FLOATZ, zonetool::iw7::TEXTURE_SRC_CODE_FLOATZ},
 				//{zonetool::h1::TEXTURE_SRC_CODE_PROCESSED_FLOATZ, zonetool::iw7::TEXTURE_SRC_CODE_PROCESSED_FLOATZ},
@@ -536,16 +656,19 @@ namespace zonetool::h1
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_DEPTH_PREPASS},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_DEPTH_PREPASS_VELOCITY_RIGID},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_DEPTH_PREPASS_VELOCITY_SKINNED},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR_VELOCITY_RIGID},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR_VELOCITY_SKINNED},
+				// IW7 calls the three H1 HiDir prepasses object-id prepasses.  Slots 3-5
+				// are confirmed by native IW7 techset dumps; the public enum aliases 4/5
+				// to velocity slots, so use the actual serialized values here.
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR, 3},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR_VELOCITY_RIGID, 4},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_ZPREPASS_HIDIR_VELOCITY_SKINNED, 5},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_BUILD_SHADOWMAP_DEPTH, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_BUILD_SHADOWMAP_DEPTH},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_BUILD_SHADOWMAP_COLOR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_BUILD_SHADOWMAP_COLOR},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_UNLIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_UNLIT},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_EMISSIVE, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_EMISSIVE},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_EMISSIVE_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_EMISSIVE_DFOG},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_EMISSIVE_SHADOW},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_EMISSIVE_SHADOW_DFOG},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_EMISSIVE_UNK},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_EMISSIVE_DEBUG},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_LIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_LIT},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_LIT_DIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_LIT_DIR},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_LIT_DIR_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_LIT_DIR_SHADOW},
@@ -581,16 +704,16 @@ namespace zonetool::h1
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_DEPTH_PREPASS},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_DEPTH_PREPASS_VELOCITY_RIGID},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_DEPTH_PREPASS_VELOCITY_SKINNED},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR_VELOCITY_RIGID},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR_VELOCITY_SKINNED},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR, 41},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR_VELOCITY_RIGID, 42},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_ZPREPASS_HIDIR_VELOCITY_SKINNED, 43},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_BUILD_SHADOWMAP_DEPTH, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_BUILD_SHADOWMAP_DEPTH},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_BUILD_SHADOWMAP_COLOR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_BUILD_SHADOWMAP_COLOR},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_UNLIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_UNLIT},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_DFOG},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_SHADOW},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_SHADOW_DFOG},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_UNK},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_EMISSIVE_DEBUG},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT_DIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT_DIR},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT_DIR_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT_DIR_SHADOW},
@@ -626,16 +749,16 @@ namespace zonetool::h1
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_DEPTH_PREPASS},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_DEPTH_PREPASS_VELOCITY_RIGID},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_DEPTH_PREPASS_VELOCITY_SKINNED},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR_VELOCITY_RIGID},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR_VELOCITY_SKINNED},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR, 79},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR_VELOCITY_RIGID, 80},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_ZPREPASS_HIDIR_VELOCITY_SKINNED, 81},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_BUILD_SHADOWMAP_DEPTH, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_BUILD_SHADOWMAP_DEPTH},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_BUILD_SHADOWMAP_COLOR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_BUILD_SHADOWMAP_COLOR},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_UNLIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_UNLIT},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_DFOG},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_SHADOW},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_SHADOW_DFOG},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_UNK},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_EMISSIVE_DEBUG},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT_DIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT_DIR},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT_DIR_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT_DIR_SHADOW},
@@ -671,16 +794,16 @@ namespace zonetool::h1
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_DEPTH_PREPASS},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_DEPTH_PREPASS_VELOCITY_RIGID},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_DEPTH_PREPASS_VELOCITY_SKINNED},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR_VELOCITY_RIGID, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR_VELOCITY_RIGID},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR_VELOCITY_SKINNED, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR_VELOCITY_SKINNED},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR, 117},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR_VELOCITY_RIGID, 118},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_ZPREPASS_HIDIR_VELOCITY_SKINNED, 119},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_BUILD_SHADOWMAP_DEPTH, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_BUILD_SHADOWMAP_DEPTH},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_BUILD_SHADOWMAP_COLOR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_BUILD_SHADOWMAP_COLOR},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_UNLIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_UNLIT},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_DFOG},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_SHADOW},
-				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_SHADOW_DFOG},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_UNK},
+				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_SHADOW_DFOG, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_EMISSIVE_DEBUG},
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT_DIR, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT_DIR},
 				//{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT_DIR_SHADOW, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT_DIR_SHADOW},
@@ -714,12 +837,39 @@ namespace zonetool::h1
 				{zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_DEBUG_BUMPMAP, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_DEBUG_BUMPMAP},
 			};
 
+			// IW7 keeps the first thirteen lit variants for each geometry family at
+			// their original numeric slots, but the recovered enum has no names for
+			// them.  These are not substitutes: each entry still points to the H1
+			// technique and H1 DXBC.  Leaving them absent prevents IW7 from selecting
+			// the appropriate sun/dynamic-light pass for a converted material.
+			const bool extended_technique_index_map = []
+			{
+				const auto add_lit_variants = [](const std::int32_t source_first, const std::int32_t target_first)
+				{
+					// LIT_DIR through LIT_DIR_DFOG, inclusive.
+					for (auto offset = 0; offset != 13; ++offset)
+					{
+						technique_index_map.emplace(source_first + offset, target_first + offset);
+					}
+				};
+
+				add_lit_variants(zonetool::h1::MaterialTechniqueType::TECHNIQUE_LIT_DIR, 14);
+				add_lit_variants(zonetool::h1::MaterialTechniqueType::TECHNIQUE_INSTANCED_LIT_DIR, 52);
+				add_lit_variants(zonetool::h1::MaterialTechniqueType::TECHNIQUE_SUBDIV_PATCH_LIT_DIR, 90);
+				add_lit_variants(zonetool::h1::MaterialTechniqueType::TECHNIQUE_NO_DISPLACEMENT_LIT_DIR, 128);
+				return true;
+			}();
+
 			unsigned short convert_code_const(unsigned short index)
 			{
 				const auto iter = mapped_code_consts.find(index);
 				if (iter == mapped_code_consts.end())
 				{
-					ZONETOOL_ERROR("Couldn't map code const %i", index);
+					static std::unordered_set<unsigned short> reported_indices{};
+					if (reported_indices.emplace(index).second)
+					{
+						ZONETOOL_WARNING("No IW7 equivalent is known for H1 code const %i; using CONST_SRC_NONE", index);
+					}
 					return zonetool::iw7::CONST_SRC_NONE;
 				}
 			
@@ -731,32 +881,253 @@ namespace zonetool::h1
 				const auto iter = texture_src_code_map.find(index);
 				if (iter == texture_src_code_map.end())
 				{
-					ZONETOOL_ERROR("Couldn't map texture code %i", index);
+					static std::unordered_set<unsigned int> reported_indices{};
+					if (reported_indices.emplace(index).second)
+					{
+						ZONETOOL_WARNING("No IW7 equivalent is known for H1 texture code %i; using TEXTURE_SRC_CODE_BLACK", index);
+					}
 					return zonetool::iw7::TEXTURE_SRC_CODE_BLACK;
 				}
 
 				return iter->second;
 			}
 
-			zonetool::iw7::MaterialShaderArgument* convert_shader_arguments(zonetool::h1::MaterialPass* pass, utils::memory::allocator& allocator)
+			zonetool::iw7::MaterialShaderArgument convert_shader_argument(const zonetool::h1::MaterialShaderArgument& source)
 			{
-				const auto arg_count = pass->perPrimArgCount + pass->perObjArgCount + pass->stableArgCount;
-				const auto converted_args = allocator.allocate_array<zonetool::iw7::MaterialShaderArgument>(arg_count);
-				std::memcpy(converted_args, pass->args, sizeof(zonetool::h1::MaterialShaderArgument) * arg_count);
-
-				for (auto i = 0; i < arg_count; i++)
+				auto converted = zonetool::iw7::MaterialShaderArgument{};
+				std::memcpy(&converted, &source, sizeof(source));
+				if (converted.type == MTL_ARG_CODE_CONST)
 				{
-					if (converted_args[i].type == MTL_ARG_CODE_CONST)
+					converted.u.codeConst.index = convert_code_const(converted.u.codeConst.index);
+				}
+				else if (converted.type == MTL_ARG_CODE_TEXTURE || converted.type == MTL_ARG_CODE_SAMPLER)
+				{
+					converted.u.codeSampler = convert_texture_code(converted.u.codeSampler);
+				}
+
+				return converted;
+			}
+
+			std::uint16_t get_arg_rows(const zonetool::iw7::MaterialShaderArgument& arg)
+			{
+				return arg.type == MTL_ARG_CODE_CONST ? arg.u.codeConst.rowCount : 1;
+			}
+
+			void add_literal_arg(const std::uint8_t shader_flags, const std::uint16_t dest,
+				utils::memory::allocator& allocator, std::vector<zonetool::iw7::MaterialShaderArgument>& args)
+			{
+				auto arg = zonetool::iw7::MaterialShaderArgument{};
+				arg.type = zonetool::iw7::MTL_ARG_LITERAL_CONST;
+				arg.shader = shader_flags;
+				arg.dest = dest;
+				auto* literal = allocator.allocate_array<float>(4);
+				std::memset(literal, 0, sizeof(float) * 4);
+				arg.u.literalConst = literal;
+				args.emplace_back(arg);
+			}
+
+			// IW6 -> H1 performs this exact audit before serialising a converted pass.
+			// A DXBC cbuffer row that has no MaterialShaderArgument is undefined input
+			// to the renderer.  Here the destination rows are preserved, so adding a
+			// zero literal needs no shader patch; shader-tool is used to inspect DXBC,
+			// and will be used for a patch only if a later binding remap is proven.
+			template <typename T>
+			void add_missing_pixel_shader_dests(T* shader_def,
+				std::vector<zonetool::iw7::MaterialShaderArgument>& prim_args,
+				std::vector<zonetool::iw7::MaterialShaderArgument>& object_args,
+				std::vector<zonetool::iw7::MaterialShaderArgument>& stable_args,
+				utils::memory::allocator& allocator)
+			{
+				if (!shader_def || !shader_def->prog.loadDef.program)
+				{
+					return;
+				}
+
+				constexpr std::array<std::uint32_t, 3> cb_slots = { 0, 1, 2 };
+				std::array<std::vector<zonetool::iw7::MaterialShaderArgument>*, 3> arg_sets =
+				{
+					&prim_args, &object_args, &stable_args
+				};
+				std::array<std::unordered_set<std::uint32_t>, 3> existing_dests{};
+				for (auto set_index = 0u; set_index < arg_sets.size(); ++set_index)
+				{
+					for (const auto& arg : *arg_sets[set_index])
 					{
-						converted_args[i].u.codeConst.index = convert_code_const(converted_args[i].u.codeConst.index);
-					}
-					else if (converted_args[i].type == MTL_ARG_CODE_TEXTURE || converted_args[i].type == MTL_ARG_CODE_SAMPLER)
-					{
-						converted_args[i].u.codeSampler = convert_texture_code(converted_args[i].u.codeSampler);
+						if ((arg.shader & shader_flag_pixel_shader) == 0 ||
+							(arg.type != MTL_ARG_CODE_CONST && arg.type != MTL_ARG_LITERAL_CONST))
+						{
+							continue;
+						}
+						for (auto row = 0u; row < get_arg_rows(arg); ++row)
+						{
+							existing_dests[set_index].insert(arg.dest + row);
+						}
 					}
 				}
 
-				return converted_args;
+				const std::string shader_data{ reinterpret_cast<const char*>(shader_def->prog.loadDef.program),
+					shader_def->prog.loadDef.programSize };
+				if (shader_data.size() < 4 || std::memcmp(shader_data.data(), "DXBC", 4) != 0)
+				{
+					return;
+				}
+
+				// Only standalone DXBC containers can be inspected by shader-tool.  H1's
+				// loadDef commonly exposes a wrapper blob instead, which is retained
+				// untouched and does not participate in the optional row repair.
+				alys::shader::shader_object shader;
+				try
+				{
+					shader = alys::shader::shader_object::parse(shader_data);
+				}
+				catch (const std::exception& ex)
+				{
+					ZONETOOL_WARNING("Skipping DXBC constant-buffer audit for pixel shader \"%s\": %s",
+						shader_def->name ? shader_def->name : "<unnamed>", ex.what());
+					return;
+				}
+				std::array<std::unordered_set<std::uint32_t>, 3> shader_dests{};
+				for (const auto& instruction : shader.get_instructions())
+				{
+					if (instruction.opcode.type == D3D10_SB_OPCODE_DCL_CONSTANT_BUFFER)
+					{
+						continue;
+					}
+					for (const auto& operand : instruction.operands)
+					{
+						if (operand.type != D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER)
+						{
+							continue;
+						}
+						for (auto set_index = 0u; set_index < cb_slots.size(); ++set_index)
+						{
+							if (operand.indices[0].value.uint32 == cb_slots[set_index])
+							{
+								shader_dests[set_index].insert(operand.indices[1].value.uint32);
+								break;
+							}
+						}
+					}
+				}
+
+				for (auto set_index = 0u; set_index < arg_sets.size(); ++set_index)
+				{
+					for (const auto dest : shader_dests[set_index])
+					{
+						if (!existing_dests[set_index].contains(dest))
+						{
+							add_literal_arg(shader_flag_pixel_shader, static_cast<std::uint16_t>(dest), allocator, *arg_sets[set_index]);
+						}
+					}
+				}
+			}
+
+			void set_pass_arguments(zonetool::iw7::MaterialPass* pass, utils::memory::allocator& allocator,
+				std::vector<zonetool::iw7::MaterialShaderArgument>& prim_args,
+				std::vector<zonetool::iw7::MaterialShaderArgument>& object_args,
+				std::vector<zonetool::iw7::MaterialShaderArgument>& stable_args)
+			{
+				const auto compare_args = [](const auto& left, const auto& right)
+				{
+					if (left.type != right.type) return left.type < right.type;
+					if (left.type <= MTL_ARG_LITERAL_CONST && left.type != MTL_ARG_MATERIAL_CONST) return left.dest < right.dest;
+					if (left.u.codeSampler != right.u.codeSampler) return left.u.codeSampler < right.u.codeSampler;
+					return left.dest < right.dest;
+				};
+				std::sort(prim_args.begin(), prim_args.end(), compare_args);
+				std::sort(object_args.begin(), object_args.end(), compare_args);
+				std::sort(stable_args.begin(), stable_args.end(), compare_args);
+
+				const auto arg_count = prim_args.size() + object_args.size() + stable_args.size();
+				pass->args = arg_count ? allocator.allocate_array<zonetool::iw7::MaterialShaderArgument>(arg_count) : nullptr;
+				pass->perPrimArgCount = static_cast<std::uint8_t>(prim_args.size());
+				pass->perObjArgCount = static_cast<std::uint8_t>(object_args.size());
+				pass->stableArgCount = static_cast<std::uint8_t>(stable_args.size());
+				// The H1 pass sizes describe the cbuffer allocation, not merely the
+				// highest MaterialShaderArgument destination.  Preserve them as the
+				// lower bound (as the IW6->H1 converter does): unused/padded rows can
+				// still be read by the retained H1 DXBC.
+				const auto h1_per_prim_size = pass->perPrimArgSize;
+				const auto h1_per_obj_size = pass->perObjArgSize;
+				const auto h1_stable_size = pass->stableArgSize;
+				pass->perPrimArgSize = h1_per_prim_size;
+				pass->perObjArgSize = h1_per_obj_size;
+				pass->stableArgSize = h1_stable_size;
+
+				auto append = [&](const auto& args, std::uint16_t& size, auto& destination)
+				{
+					for (const auto& arg : args)
+					{
+						if (arg.type == MTL_ARG_CODE_CONST || arg.type == MTL_ARG_LITERAL_CONST)
+						{
+							size = std::max(size, static_cast<std::uint16_t>((arg.dest + get_arg_rows(arg)) * 16u));
+						}
+						*destination++ = arg;
+					}
+				};
+				auto destination = pass->args;
+				append(prim_args, pass->perPrimArgSize, destination);
+				append(object_args, pass->perObjArgSize, destination);
+				append(stable_args, pass->stableArgSize, destination);
+			}
+
+			void convert_shader_arguments(const zonetool::h1::MaterialPass* source, zonetool::iw7::MaterialPass* destination,
+				utils::memory::allocator& allocator)
+			{
+				if (!source->args)
+				{
+					destination->args = nullptr;
+					return;
+				}
+
+				std::vector<zonetool::iw7::MaterialShaderArgument> prim_args;
+				std::vector<zonetool::iw7::MaterialShaderArgument> object_args;
+				std::vector<zonetool::iw7::MaterialShaderArgument> stable_args;
+				auto append_source = [&](auto& args, const auto first, const auto count)
+				{
+					for (auto index = 0u; index < count; ++index)
+					{
+						args.emplace_back(convert_shader_argument(source->args[first + index]));
+					}
+				};
+				append_source(prim_args, 0u, source->perPrimArgCount);
+				append_source(object_args, source->perPrimArgCount, source->perObjArgCount);
+				append_source(stable_args, source->perPrimArgCount + source->perObjArgCount, source->stableArgCount);
+
+				// The IW6 -> H1 path runs a shader-tool cbuffer audit here because it
+				// rewrites those DXBC blobs.  H1 -> IW7 does not have the recovered
+				// wrapper/patch format yet.  Do not manufacture literal arguments from
+				// a partially parsed blob: preserve the H1 pass arguments verbatim until
+				// the binding conversion is implemented as one atomic DXBC operation.
+				set_pass_arguments(destination, allocator, prim_args, object_args, stable_args);
+			}
+
+			std::uint32_t convert_custom_buffer_flags(const std::uint32_t source_flags)
+			{
+				// IW7 uses the pre-H1 flag layout.  This is the inverse of the
+				// established IW6 -> H1 conversion: the first eleven bindings retain
+				// their positions, while the tessellation/patch tail was compacted by
+				// one bit in H1.  Do not replace this mask with a native default -- it
+				// controls which per-draw constant buffers the retained H1 DXBC sees.
+				constexpr auto direct_mask = 0x7FFu;
+				std::uint32_t target_flags = source_flags & direct_mask;
+				if (source_flags & zonetool::h1::CUSTOM_BUFFER_SUBDIV_PATCH)
+				{
+					target_flags |= 0x1000u; // IW7 CUSTOM_BUFFER_SUBDIV_PATCH
+				}
+				if (source_flags & zonetool::h1::CUSTOM_BUFFER_REGULAR_PATCH_FLAGS)
+				{
+					target_flags |= 0x2000u; // IW7 CUSTOM_BUFFER_REGULAR_PATCH_FLAGS
+				}
+				if (source_flags & zonetool::h1::CUSTOM_BUFFER_UNKNOWN2000)
+				{
+					target_flags |= 0x4000u;
+				}
+				if (source_flags & zonetool::h1::CUSTOM_BUFFER_UNKNOWN4000)
+				{
+					target_flags |= 0x8000u;
+				}
+				return target_flags;
 			}
 
 			template <typename T, typename S>
@@ -779,6 +1150,31 @@ namespace zonetool::h1
 				*target = convert_shader<T>(source, allocator);
 			}
 
+			zonetool::iw7::MaterialVertexDeclaration* convert_vertex_decl(
+				const zonetool::h1::MaterialVertexDeclaration* source, utils::memory::allocator& allocator)
+			{
+				if (!source)
+				{
+					return nullptr;
+				}
+
+				// Vertex declarations are not shader assets.  Their routing arrays have
+				// different sizes (H1: 32/250, IW7: 34/270), so the generic shader
+				// memcpy used to shift the whole object by eight bytes and corrupt the
+				// stream routing used to create the D3D input layout.
+				auto* converted = allocator.allocate<zonetool::iw7::MaterialVertexDeclaration>();
+				converted->name = allocator.duplicate_string(game::add_source_postfix(source->name, game::h1));
+				converted->streamCount = source->streamCount;
+				converted->hasOptionalSource = source->hasOptionalSource;
+				for (auto stream = 0u; stream < 32; ++stream)
+				{
+					converted->routing.data[stream].source = source->routing.data[stream].source;
+					converted->routing.data[stream].dest = source->routing.data[stream].dest;
+					converted->routing.data[stream].mask = source->routing.data[stream].mask;
+				}
+				return converted;
+			}
+
 			zonetool::iw7::MaterialTechnique* convert_tech(std::unordered_map<MaterialTechnique*, zonetool::iw7::MaterialTechnique*>& converted_asset_techniques, MaterialTechniqueSet* asset,
 				zonetool::iw7::MaterialTechniqueSet* new_asset, utils::memory::allocator& allocator, const std::int32_t tech_index, const std::int32_t new_tech_index)
 			{
@@ -797,7 +1193,11 @@ namespace zonetool::h1
 				const auto size = sizeof(zonetool::iw7::MaterialTechniqueHeader) + 
 					sizeof(zonetool::iw7::MaterialPass) * technique->hdr.passCount;
 				const auto new_technique = reinterpret_cast<zonetool::iw7::MaterialTechnique*>(allocator.allocate_array<char>(size));
-				std::memcpy(new_technique, technique, size);
+				// The H1 pass is 72 bytes while IW7's is 104 bytes.  Copying the
+				// destination size reads beyond the H1 technique allocation and leaves
+				// accidental source data in the IW7-only pass fields.
+				std::memset(new_technique, 0, size);
+				std::memcpy(&new_technique->hdr, &technique->hdr, sizeof(technique->hdr));
 
 				new_technique->hdr.name = allocator.duplicate_string(game::add_source_postfix(technique->hdr.name, game::h1));
 				new_technique->hdr.flags = technique->hdr.flags;
@@ -810,14 +1210,25 @@ namespace zonetool::h1
 
 					std::memcpy(new_pass, pass, sizeof(zonetool::h1::MaterialPass));
 					std::memset(new_pass->__pad0, 0, sizeof(new_pass->__pad0));
+					std::memset(new_pass->unk, 0, sizeof(new_pass->unk));
+					// Preserve the pass-selection contract used by the H1 DXBC.  The
+					// supplied, working IW6 -> H1 converter carries precompiledIndex,
+					// stageConfig, and sampler flags through unchanged; it only remaps the
+					// custom-buffer bit layout.  Zeroing these fields made every converted
+					// pass look like IW7's serialized default, but left its required
+					// constant buffers and pipeline selection unbound at render time.
+					new_pass->customBufferFlags = convert_custom_buffer_flags(pass->customBufferFlags);
+					new_pass->customSamplerFlags = pass->customSamplerFlags;
+					new_pass->stageConfig = pass->stageConfig;
+					new_pass->precompiledIndex = pass->precompiledIndex;
 
 					convert_shader(&new_pass->vertexShader, pass->vertexShader, allocator);
-					convert_shader(&new_pass->vertexDecl, pass->vertexDecl, allocator);
+					new_pass->vertexDecl = convert_vertex_decl(pass->vertexDecl, allocator);
 					convert_shader(&new_pass->hullShader, pass->hullShader, allocator);
 					convert_shader(&new_pass->domainShader, pass->domainShader, allocator);
 					convert_shader(&new_pass->pixelShader, pass->pixelShader, allocator);
 
-					new_pass->args = convert_shader_arguments(pass, allocator);
+					convert_shader_arguments(pass, new_pass, allocator);
 				}
 
 				converted_asset_techniques[technique] = new_technique;
@@ -835,33 +1246,77 @@ namespace zonetool::h1
 				COPY_VALUE(worldVertFormat);
 				COPY_VALUE(preDisplacementOnlyCount);
 
+				std::memset(new_asset->techniqueMaskStartIndex, 0, sizeof(new_asset->techniqueMaskStartIndex));
+				std::memset(new_asset->unk, 0, sizeof(new_asset->unk));
+				std::memset(new_asset->techniqueMask, 0, sizeof(new_asset->techniqueMask));
 				new_asset->techniqueCount = zonetool::h1::MaterialTechniqueType::TECHNIQUE_COUNT;
 				new_asset->techniques = allocator.allocate_array<zonetool::iw7::MaterialTechnique*>(new_asset->techniqueCount);
 
-				unsigned short technique_index = 0;
+				// IW7's techniques pointer is a compact array addressed by the number
+				// of set mask bits below a requested target type.  Its order must thus
+				// be target-type order, not H1 source-type order.  The two layouts are
+				// currently similar, but relying on that coincidence corrupts lookups
+				// whenever a future compatibility mapping changes the ordering.
+				std::vector<std::pair<std::int32_t, std::int32_t>> mapped_techniques;
+				mapped_techniques.reserve(technique_index_map.size());
+				std::array<bool, zonetool::iw7::MaterialTechniqueType::TECHNIQUE_COUNT> used_target_types{};
+				for (const auto& [source_type, target_type] : technique_index_map)
+				{
+					if (source_type < 0 || source_type >= MaterialTechniqueType::TECHNIQUE_COUNT ||
+						target_type < 0 || target_type >= zonetool::iw7::MaterialTechniqueType::TECHNIQUE_COUNT)
+					{
+						ZONETOOL_FATAL("Invalid H1-to-IW7 technique mapping %i -> %i.", source_type, target_type);
+					}
+					if (used_target_types[target_type])
+					{
+						ZONETOOL_FATAL("Ambiguous H1-to-IW7 technique mapping targets IW7 type %i.", target_type);
+					}
+					used_target_types[target_type] = true;
+					mapped_techniques.emplace_back(source_type, target_type);
+				}
+				std::sort(mapped_techniques.begin(), mapped_techniques.end(),
+					[](const auto& left, const auto& right) { return left.second < right.second; });
 
+				unsigned short technique_index = 0;
 				std::unordered_map<MaterialTechnique*, zonetool::iw7::MaterialTechnique*> converted_asset_techniques;
 
-				for (auto i = 0u; i < MaterialTechniqueType::TECHNIQUE_COUNT; i++)
+				for (const auto& [source_type, target_type] : mapped_techniques)
 				{
-					const auto iter = technique_index_map.find(i);
-					if (iter == technique_index_map.end())
-					{
-						continue;
-					}
-
-					if (!convert_tech(converted_asset_techniques, asset, new_asset, allocator, i, technique_index))
+					if (!convert_tech(converted_asset_techniques, asset, new_asset, allocator, source_type, technique_index))
 					{
 						continue;
 					}
 					technique_index++;
 
-					auto technique_mask_index = iter->second >> 6;
-					auto technique_mask_bit = 1ull << (iter->second & zonetool::iw7::TECHNIQUE_MASK);
+					auto technique_mask_index = target_type >> 6;
+					auto technique_mask_bit = 1ull << (target_type & zonetool::iw7::TECHNIQUE_MASK);
 					new_asset->techniqueMask[technique_mask_index] |= technique_mask_bit;
 				}
 
 				new_asset->techniqueCount = technique_index;
+
+				// IW7 stores techniques as a compact array.  techniqueMaskStartIndex is
+				// the prefix-popcount for each 64-technique mask word, not padding.  It
+				// is used by the renderer to turn a technique type into an index in the
+				// compact techniques array.  Leaving it at zero makes every technique in
+				// mask words 1 and 2 resolve to the wrong technique (or no technique).
+				unsigned short compact_index = 0;
+				for (auto mask_index = 0u; mask_index < zonetool::iw7::NUM_TECHNIQUE_MASK_ELEMS; ++mask_index)
+				{
+					new_asset->techniqueMaskStartIndex[mask_index] = static_cast<short>(compact_index);
+
+					auto mask = new_asset->techniqueMask[mask_index];
+					while (mask)
+					{
+						compact_index += 1;
+						mask &= mask - 1;
+					}
+				}
+
+				if (compact_index != new_asset->techniqueCount)
+				{
+					ZONETOOL_FATAL("Converted techset %s has an inconsistent compact technique index.", new_asset->name);
+				}
 
 				return new_asset;
 			}

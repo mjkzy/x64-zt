@@ -14,6 +14,10 @@ namespace zonetool::iw7
 
 	public:
 		static std::unordered_map<std::string, std::uintptr_t> vertexdecl_pointers;
+		// H1-derived techset names can exceed MAX_PATH once combined with the
+		// material-state directory.  This is the deterministic on-disk alias used
+		// by both the H1 dumper and IW7 parser for those auxiliary files.
+		static std::string get_material_data_techset_name(const std::string& techset);
 
 		MaterialTechniqueSet* parse(const std::string& name, zone_memory* mem);
 		static void parse_stateinfo(const std::string& techset, const std::string& material, Material* mat, zone_memory* mem);
