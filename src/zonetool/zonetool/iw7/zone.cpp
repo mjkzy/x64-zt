@@ -73,12 +73,12 @@ namespace zonetool::iw7
 
 			auto data_ptr = reinterpret_cast<const char*>(data);
 
-			const auto write = [&](void* data, const size_t len)
+			out_buffer.reserve(size + (size / MAX_BLOCK_SIZE + 1) * 64);
+
+			const auto write = [&](const void* data, const size_t len)
 			{
-				for (auto i = 0ull; i < len; i++)
-				{
-					out_buffer.push_back(reinterpret_cast<char*>(data)[i]);
-				}
+				const auto* bytes = reinterpret_cast<const std::uint8_t*>(data);
+				out_buffer.insert(out_buffer.end(), bytes, bytes + len);
 			};
 
 			XFileCompressorHeader compress_header{};
@@ -174,12 +174,12 @@ namespace zonetool::iw7
 
 			auto data_ptr = reinterpret_cast<const char*>(data);
 
-			const auto write = [&](void* data, const size_t len)
+			out_buffer.reserve(size + (size / MAX_BLOCK_SIZE + 1) * 64);
+
+			const auto write = [&](const void* data, const size_t len)
 			{
-				for (auto i = 0ull; i < len; i++)
-				{
-					out_buffer.push_back(reinterpret_cast<char*>(data)[i]);
-				}
+				const auto* bytes = reinterpret_cast<const std::uint8_t*>(data);
+				out_buffer.insert(out_buffer.end(), bytes, bytes + len);
 			};
 
 			XFileCompressorHeader compress_header{};

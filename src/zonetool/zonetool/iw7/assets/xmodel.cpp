@@ -58,6 +58,21 @@ namespace zonetool::iw7
 		asset->baseMat = read.read_array<DObjAnimMat>();
 		asset->reactiveMotionParts = read.read_array<ReactiveMotionModelPart>();
 		asset->reactiveMotionTweaks = read.read_single<ReactiveMotionModelTweaks>();
+
+		// the game dereferences reactiveMotionTweaks unconditionally on reactive-motion
+		// flagged static models, ported H1 models may lack it
+		if (asset->reactiveMotionParts == nullptr)
+		{
+			asset->numReactiveMotionParts = 0;
+		}
+		if (asset->reactiveMotionTweaks == nullptr)
+		{
+			asset->reactiveMotionTweaks = mem->allocate<ReactiveMotionModelTweaks>();
+			asset->reactiveMotionTweaks->scale[0] = 1.0f;
+			asset->reactiveMotionTweaks->scale[1] = 1.0f;
+			asset->reactiveMotionTweaks->scale[2] = 1.0f;
+			asset->reactiveMotionTweaks->scale[3] = 1.0f;
+		}
 		asset->collSurfs = read.read_array<XModelCollSurf_s>();
 		asset->boneInfo = read.read_array<XBoneInfo>();
 		asset->invHighMipRadius = read.read_array<unsigned short>();

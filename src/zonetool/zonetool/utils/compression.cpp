@@ -13,6 +13,7 @@
 #include <tomcrypt.h>
 
 #include <utils/string.hpp>
+#include <utils/flags.hpp>
 
 #define LZ4_COMPRESSION 4
 #define LZ4_CLEVEL 8 // compression level
@@ -54,13 +55,18 @@ namespace compression
 
 			auto data_ptr = reinterpret_cast<const char*>(data);
 
-			const auto write = [&](void* data, const size_t len)
+			const auto write = [&](const void* data, const size_t len)
 			{
-				for (auto i = 0ull; i < len; i++)
-				{
-					out_buffer.push_back(reinterpret_cast<char*>(data)[i]);
-				}
+				const auto* bytes = reinterpret_cast<const std::uint8_t*>(data);
+				out_buffer.insert(out_buffer.end(), bytes, bytes + len);
 			};
+
+			out_buffer.reserve(size + (size / MAX_BLOCK_SIZE + 1) * (sizeof(compressed_block_header) + 64));
+
+			const auto use_hc = utils::flags::has_flag("lz4hc");
+
+			std::string buffer;
+			buffer.resize(LZ4_compressBound(MAX_BLOCK_SIZE));
 
 			auto first_block = true;
 
@@ -68,12 +74,11 @@ namespace compression
 			{
 				const auto block_size = static_cast<unsigned int>(std::min(bytes_to_compress, MAX_BLOCK_SIZE));
 				const auto bound = LZ4_compressBound(block_size);
-
-				std::string buffer;
 				buffer.resize(bound);
 
-				const auto compressed_size = LZ4_compress_HC(data_ptr,
-					buffer.data(), block_size, bound, LZ4_CLEVEL);
+				const auto compressed_size = use_hc
+					? LZ4_compress_HC(data_ptr, buffer.data(), block_size, bound, LZ4_CLEVEL)
+					: LZ4_compress_default(data_ptr, buffer.data(), block_size, bound);
 				buffer.resize(align_value(compressed_size, 4));
 
 				if (first_block)

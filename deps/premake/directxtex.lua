@@ -35,6 +35,7 @@ function directxtex.project()
 
 		warnings "Off"
 		kind "StaticLib"
+		openmp "On"
 end
 
 table.insert(dependencies, directxtex)

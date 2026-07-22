@@ -1,6 +1,7 @@
 #include "std_include.hpp"
 #include "zonetool/utils/utils.hpp"
 #include "havok.hpp"
+#include "havok_debug.hpp"
 
 namespace zonetool::iw7
 {
@@ -127,6 +128,8 @@ namespace zonetool::iw7
 				auto* data = mem->allocate<char>(*size);
 				memcpy(data, bytes.data(), *size);
 
+				debug::log_summary(path, data, *size);
+
 				return data;
 			}
 
@@ -151,6 +154,8 @@ namespace zonetool::iw7
 				file.open("wb");
 				file.write(data, size, 1);
 				file.close();
+
+				debug::dump_readable(path, data, size);
 			}
 		}
 	}

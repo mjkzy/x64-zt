@@ -4,7 +4,9 @@
 #include "clipmap.hpp"
 #ifdef EXPERIMENTAL_IW7
 
+#include "clipmap_collision.hpp"
 #include "zonetool/iw7/assets/clipmap.hpp"
+#include "zonetool/iw7/common/havok_encode.hpp"
 
 #include "zonetool/utils/gsc.hpp"
 
@@ -182,8 +184,17 @@ namespace zonetool::h1
 				COPY_VALUE(splineList.splineCount);
 				REINTERPRET_CAST_SAFE(splineList.splines);
 
-				new_asset->havokEntsShapeDataSize = 0;
-				new_asset->havokEntsShapeData = nullptr;
+				// Must not stay null - see build_empty_shape_list_blob. H1 has no
+				// equivalent per-brushmodel havok shape list, and every cmodel below
+				// gets physicsShapeOverrideIdx 0xFFFF, so an empty list is the correct
+				// content; it just has to exist for the game to register a tag table.
+				{
+					const auto ents_blob = zonetool::iw7::havok::encode::build_empty_shape_list_blob();
+					auto* ents_data = allocator.allocate_array<char>(ents_blob.size());
+					std::memcpy(ents_data, ents_blob.data(), ents_blob.size());
+					new_asset->havokEntsShapeData = ents_data;
+					new_asset->havokEntsShapeDataSize = static_cast<unsigned int>(ents_blob.size());
+				}
 
 				new_asset->numSubModels = clipmap->numSubModels;
 				new_asset->cmodels = allocator.allocate_array<zonetool::iw7::cmodel_t>(clipmap->numSubModels);
@@ -438,8 +449,25 @@ namespace zonetool::h1
 
 				iw7_asset->physicsCapacities;
 
+				// Generate the IW7 havok world-collision packfile from the H1
+				// brush/terrain collision. The dumper writes this out next to the
+				// other assets as "<clipmap name>.hkx" (see
+				// zonetool::iw7::clip_map::dump -> havok::binary::dump_havok_data),
+				// which also runs the blob back through havok::debug::dump_readable
+				// for self-validation.
 				iw7_asset->havokWorldShapeDataSize = 0;
 				iw7_asset->havokWorldShapeData = nullptr;
+				{
+					world_collision::stats collision_stats{};
+					const auto blob = world_collision::generate(asset, &collision_stats);
+					if (!blob.empty())
+					{
+						auto* data = allocator.allocate_array<char>(blob.size());
+						std::memcpy(data, blob.data(), blob.size());
+						iw7_asset->havokWorldShapeData = data;
+						iw7_asset->havokWorldShapeDataSize = static_cast<unsigned int>(blob.size());
+					}
+				}
 
 				iw7_asset->numCollisionHeatmapEntries = 0;
 				iw7_asset->collisionHeatmap = nullptr;

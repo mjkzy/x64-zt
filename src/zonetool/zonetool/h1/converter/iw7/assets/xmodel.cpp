@@ -61,6 +61,22 @@ namespace zonetool::h1
 				REINTERPRET_CAST_SAFE(reactiveMotionParts);
 				REINTERPRET_CAST_SAFE(reactiveMotionTweaks);
 
+				// IW7 dereferences reactiveMotionTweaks unconditionally when the model has
+				// reactive motion parts (H1 tolerates a null pointer here)
+				if (new_asset->numReactiveMotionParts && !new_asset->reactiveMotionTweaks)
+				{
+					const auto tweaks = allocator.allocate<zonetool::iw7::ReactiveMotionModelTweaks>();
+					tweaks->scale[0] = 1.0f;
+					tweaks->scale[1] = 1.0f;
+					tweaks->scale[2] = 1.0f;
+					tweaks->scale[3] = 1.0f;
+					new_asset->reactiveMotionTweaks = tweaks;
+				}
+				if (!new_asset->reactiveMotionParts)
+				{
+					new_asset->numReactiveMotionParts = 0;
+				}
+
 				new_asset->materialHandles = allocator.allocate_array<zonetool::iw7::Material*>(asset->numsurfs);
 				for (auto i = 0; i < asset->numsurfs; i++)
 				{

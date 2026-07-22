@@ -327,9 +327,27 @@ namespace zonetool::h1
 							DirectX::ComputePitch(srcImg.format, srcImg.width, srcImg.height, srcImg.rowPitch, srcImg.slicePitch);
 
 							DirectX::ScratchImage hdrTemp;
-							auto hr = DirectX::Convert(srcImg, DXGI_FORMAT_R16G16B16A16_FLOAT, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, hdrTemp);
+							HRESULT hr;
+							if (srcImg.format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+							{
+								// Convert() rejects same-format conversions; take a straight copy instead
+								hr = hdrTemp.InitializeFromImage(srcImg);
+							}
+							else if (DirectX::IsCompressed(srcImg.format))
+							{
+								hr = DirectX::Decompress(srcImg, DXGI_FORMAT_R16G16B16A16_FLOAT, hdrTemp);
+							}
+							else
+							{
+								hr = DirectX::Convert(srcImg, DXGI_FORMAT_R16G16B16A16_FLOAT, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, hdrTemp);
+							}
 
-							if (FAILED(hr)) return nullptr;
+							if (FAILED(hr))
+							{
+								ZONETOOL_ERROR("Failed to convert reflection probe image \"%s\" (format %d, mip %d) to R16G16B16A16_FLOAT (hr 0x%08X)",
+									probe_image->name, probe_image->imageFormat, i, hr);
+								return nullptr;
+							}
 
 							auto* persistentPixels = allocator.allocate_array<uint8_t>(hdrTemp.GetPixelsSize());
 							memcpy(persistentPixels, hdrTemp.GetPixels(), hdrTemp.GetPixelsSize());
@@ -361,15 +379,28 @@ namespace zonetool::h1
 
 				DirectX::ScratchImage compressed;
 				auto hr = DirectX::Compress(images.data(), images.size(), mdata, DXGI_FORMAT_BC6H_UF16, DirectX::TEX_COMPRESS_PARALLEL, DirectX::TEX_THRESHOLD_DEFAULT, compressed);
+				if (hr == E_NOTIMPL)
+				{
+					// TEX_COMPRESS_PARALLEL requires an OpenMP-enabled DirectXTex build; retry serial
+					hr = DirectX::Compress(images.data(), images.size(), mdata, DXGI_FORMAT_BC6H_UF16, DirectX::TEX_COMPRESS_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, compressed);
+				}
 
-				if (FAILED(hr)) return nullptr;
+				if (FAILED(hr))
+				{
+					ZONETOOL_ERROR("Failed to compress reflection probe array to BC6H_UF16 (hr 0x%08X)", hr);
+					return nullptr;
+				}
 
 				std::string spath = filesystem::get_dump_path() + "images\\" + image_name_clean + ".dds";
 				std::wstring wpath(spath.begin(), spath.end());
 				std::filesystem::create_directories(filesystem::get_dump_path() + "images\\");
 
 				hr = DirectX::SaveToDDSFile(compressed.GetImages(), compressed.GetImageCount(), compressed.GetMetadata(), DirectX::DDS_FLAGS_NONE, wpath.data());
-				if (FAILED(hr)) return nullptr;
+				if (FAILED(hr))
+				{
+					ZONETOOL_ERROR("Failed to save \"%s\" (hr 0x%08X)", spath.data(), hr);
+					return nullptr;
+				}
 
 				auto* image = allocator.allocate<zonetool::iw7::GfxImage>();
 				image->name = allocator.duplicate_string(image_name);
@@ -442,6 +473,10 @@ namespace zonetool::h1
 				new_asset->draw.reflectionProbeData.sharedReflectionProbeCount = 0;
 				new_asset->draw.reflectionProbeData.reflectionProbes = allocator.allocate_array<zonetool::iw7::GfxReflectionProbe>(asset->draw.reflectionProbeCount);
 				new_asset->draw.reflectionProbeData.reflectionProbeArrayImage = generate_reflection_probe_array_image(&asset->draw, allocator);
+				if (!new_asset->draw.reflectionProbeData.reflectionProbeArrayImage)
+				{
+					ZONETOOL_ERROR("reflectionProbeArrayImage generation failed; IW7 will crash rendering this map without it");
+				}
 
 				new_asset->draw.reflectionProbeData.probeRelightingCount = 0;
 				new_asset->draw.reflectionProbeData.probeRelightingData = nullptr;
