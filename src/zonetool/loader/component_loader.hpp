@@ -68,44 +68,8 @@ namespace \
 	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::none, #name); \
 }
 
-#define REGISTER_COMPONENT_H1(name) \
-namespace \
-{ \
-	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::h1, #name); \
-}
-
-#define REGISTER_COMPONENT_H2(name) \
-namespace \
-{ \
-	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::h2, #name); \
-}
-
-#define REGISTER_COMPONENT_S1(name) \
-namespace \
-{ \
-	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::s1, #name); \
-}
-
-#define REGISTER_COMPONENT_IW6(name) \
-namespace \
-{ \
-	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::iw6, #name); \
-}
-
-#define REGISTER_COMPONENT_IW7(name) \
-namespace \
-{ \
-	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::iw7, #name); \
-}
-
 #define REGISTER_COMPONENT_IW8(name) \
 namespace \
 { \
 	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::iw8, #name); \
-}
-
-#define REGISTER_COMPONENT_T7(name) \
-namespace \
-{ \
-	static component_loader::installer<name> __component = component_loader::installer<name>(game::game_mode::t7, #name); \
 }

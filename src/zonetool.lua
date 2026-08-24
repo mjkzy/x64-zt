@@ -33,19 +33,6 @@ function zonetool:project()
 
 		prebuildcommands {"pushd %{_MAIN_SCRIPT_DIR}", "tools\\premake5 generate-buildinfo", "popd"}
 
-		if COMPUTER_NAME == "JOEL-PC" then
-			debugdir "D:\\Games\\PC\\IW7"
-			debugcommand "D:\\Games\\PC\\IW7\\$(TargetName)$(TargetExt)"
-			postbuildcommands {
-				"( copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\Games\\PC\\H1\\$(TargetName)$(TargetExt)\" )",
-				"( copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\Games\\PC\\H2\\$(TargetName)$(TargetExt)\" )",
-				"( copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\Games\\PC\\S1\\$(TargetName)$(TargetExt)\" )",
-				"( copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\Games\\PC\\IW6\\$(TargetName)$(TargetExt)\" )",
-				"( copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\Games\\PC\\IW7\\$(TargetName)$(TargetExt)\" )",
-				"( copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\SteamLibrary\\steamapps\\common\\Call of Duty Black Ops III\\UnrankedServer\\$(TargetName)$(TargetExt)\" )",
-			}
-		end
-
 		local function addcopyopt(name)
 			if (_OPTIONS[name] ~= nil) then
 				postbuildcommands {"copy /y \"$(TargetPath)\" \"" .. _OPTIONS[name] .. "\""}

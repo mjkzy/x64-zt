@@ -12,13 +12,7 @@ namespace game
 			static std::unordered_map<game_mode, std::string> game_mode_map =
 			{
 				{none, "none"},
-				{iw6, "iw6"},
-				{s1, "s1"},
-				{h1, "h1"},
-				{h2, "h2"},
-				{iw7, "iw7"},
 				{iw8, "iw8"},
-				{t7, "t7"},
 			};
 
 			return game_mode_map;
