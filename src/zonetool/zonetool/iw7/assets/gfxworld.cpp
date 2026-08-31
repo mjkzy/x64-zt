@@ -51,7 +51,6 @@ namespace zonetool::iw7
 		
 		asset->draw.reflectionProbeData.reflectionProbeArrayImage = read.read_asset<GfxImage>();
 		asset->draw.reflectionProbeData.probeRelightingData = read.read_array<GfxReflectionProbeRelightingData>();
-		asset->draw.reflectionProbeData.reflectionProbeGBufferImages = mem->allocate<GfxImage*>(asset->draw.reflectionProbeData.reflectionProbeGBufferImageCount);
 		asset->draw.reflectionProbeData.reflectionProbeGBufferImages = read.read_array<GfxImage*>();
 		for (unsigned int i = 0; i < asset->draw.reflectionProbeData.reflectionProbeGBufferImageCount; i++)
 		{
